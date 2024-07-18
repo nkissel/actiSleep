@@ -1,5 +1,5 @@
 Package: actiSleep
-Title: What the Package Does (One Line, Title Case)
+Title: A Package for Actigraphy Processing
 Version: 0.0.0.9000
 Authors@R: 
     person("Nicholas", "Kissel", , "", role = c("aut", "cre"),
@@ -14,4 +14,4 @@ Imports:
     stringr
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.3.1
+RoxygenNote: 7.3.2

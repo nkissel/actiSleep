@@ -10,16 +10,29 @@
 #' @param marker_df a data frame of button pushes
 #' @param time_start a `POSIXct` object of the start time
 #' @param time_stop a `POSIXct` object of the stop time
-#' @return
+#' @return list of data.frames for marker start/stop times, epoch-level data,
+#' epoch length, and invalid/removed day information.
 #'
 actiSleep <- function(
     epoch_df, diary_df, stats_df, marker_df, time_start = NULL, time_stop = NULL) {
 
+  filter_time <- function(df, time_start, time_stop, var_name) {
+    if(!is.null(time_start)) {
+      if(!is.null(time_stop)) {
+        df <- df %>% filter(!!sym(var_name) >= time_start,
+                            !!sym(var_name) < time_stop)
+      } else {
+        df <- df %>% filter(!!sym(var_name) >= time_start)
+      }
+    }
+    if(is.null(time_start) & !is.null(time_stop)) {
+      df <- df %>% filter(!!sym(var_name) < time_stop)
+    }
+    return(df)
+  }
+
   span1 <- 0.1
   epochs <- epoch_df
-
-  # clean epoch level data
-  epochs$Interval.Status <- ifelse(is.na(epochs$Interval.Status), 'EXCLUDED', epochs$Interval.Status)
 
   # Making sure to remove duplicate rows. These can appear if you're merging
   # data from multiple actigraphy files.
@@ -46,18 +59,21 @@ actiSleep <- function(
     return(ret)
   }
 
-  epochs <- epochs %>% arrange(Epoch.Date.Time.f, Interval.Status)
+  epochs <- epochs %>% arrange(Epoch.Date.Time.f, Interval.Status) %>%
+    mutate(Interval.Status = ifelse(is.na(Interval.Status), 'EXCLUDED', Interval.Status))
   rw2keep <- epochs %>% select(Epoch.Date.Time.f, Interval.Status) %>%
     group_by(Epoch.Date.Time.f) %>%
     reframe(Interval.Status = Interval.Status, keep = keepfunc(Interval.Status)) %>%
     pull(keep)
-  epochs <- epochs[rw2keep == 1,] %>% unique()
+  epochs <- epochs %>% slice(which(rw2keep == 1)) %>% unique()
 
   # Mark invalid epochs and remove any duplicates (there shouldn't be any)
   epochs <- epochs %>% arrange(Epoch.Date.Time.f) %>%
     mutate(is_invalid = is.nan(Activity) | Interval.Status == 'EXCLUDED')
-  epochs <- epochs[!duplicated(epochs),] %>% as.data.frame()
+  epochs <- epochs %>% slice(which(!duplicated(.))) %>% as.data.frame()
+  epochs <- filter_time(epochs, time_start, time_stop, 'Epoch.Date.Time.f')
 
+  if(nrow(epochs) == 0) return(NULL)
   min_tz <- format(as.POSIXct(as.character(min(epochs$Epoch.Date.Time.f)), tz = 'America/New_York'), "%Z")
 
   ##############################################################################
@@ -67,8 +83,6 @@ actiSleep <- function(
   if(length(acti_start_date) == 0) {
     return(NULL)
   }
-  # acti_start_date <- as.POSIXct(acti_start_date, format = '%m/%d/%Y %I:%M:%S %p', tz='UTC')
-
   acti_start_date <- as.POSIXct(acti_start_date, format = '%Y-%m-%d %H:%M:%S', tz='UTC')
   acti_start_date <- min(acti_start_date, na.rm = T)
   anchor_date <- acti_start_date #- (24*60*60) # start the day before, because diary reports night before
@@ -96,8 +110,11 @@ actiSleep <- function(
   ##############################################################################
   sub_set_cols <- c("ID", "Interval.", "Start.Date.Time.f", "End.Date.Time.f", "Duration")
   stats <- stats_df %>% as.data.frame()
+  stats <- filter_time(stats, time_start, time_stop, 'Start.Date.Time.f')
 
-  stats_f <- add_dayno(stats, "Start.Date.Time.f", anchor_date)
+
+  stats_f <- add_dayno(stats, "Start.Date.Time.f", anchor_date) %>%
+    filter(Interval.Type %in% c('ACTIVE', 'REST', 'SLEEP', 'EXCLUDED'))
   stats_f <- stats_f %>% group_by(dayno) %>%
     mutate(duration_custom = difftime(End.Date.Time.f, Start.Date.Time.f, units='mins'),
            Inv.Time.AC2 = ifelse(is.na(Inv.Time.AC), duration_custom, Inv.Time.AC)) %>%
@@ -115,18 +132,18 @@ actiSleep <- function(
     return(NULL)
   }
 
-  # remove days if not in time interval
-  if(!is.null(time_start)) {
-    if(!is.null(time_stop)) {
-      rest_data <- rest_data %>% filter(Start.Date.Time.f >= time_start,
-                                        Start.Date.Time.f < time_stop)
-    } else {
-      rest_data <- rest_data %>% filter(Start.Date.Time.f >= time_start)
-    }
-  }
-  if(is.null(time_start) & !is.null(time_stop)) {
-    rest_data <- rest_data %>% filter(Start.Date.Time.f < time_stop)
-  }
+  # # remove days if not in time interval
+  # if(!is.null(time_start)) {
+  #   if(!is.null(time_stop)) {
+  #     rest_data <- rest_data %>% filter(Start.Date.Time.f >= time_start,
+  #                                       Start.Date.Time.f < time_stop)
+  #   } else {
+  #     rest_data <- rest_data %>% filter(Start.Date.Time.f >= time_start)
+  #   }
+  # }
+  # if(is.null(time_start) & !is.null(time_stop)) {
+  #   rest_data <- rest_data %>% filter(Start.Date.Time.f < time_stop)
+  # }
 
   # get invalid day information
   invalid_info <- stats_f %>%  select(dayno, tot_inv) %>% unique()
@@ -322,9 +339,131 @@ actiSleep <- function(
            diary.Start, diary.Stop,
            marker.Start, marker.Stop,
            light.Start, light.Stop, invalid_flag) %>% unique()
+
+  all_markers2 <- all_markers %>%
+    mutate(diary.Start = remove_if_EXCLUDED(diary.Start, epochs_f),
+           diary.Stop = remove_if_EXCLUDED(diary.Stop, epochs_f),
+           marker.Start = remove_if_EXCLUDED(marker.Start, epochs_f),
+           marker.Stop = remove_if_EXCLUDED(marker.Stop, epochs_f),
+           light.Start = remove_if_EXCLUDED(light.Start, epochs_f),
+           light.Stop = remove_if_EXCLUDED(light.Stop, epochs_f))
+
+  all_markers2 <- algo_column(all_markers2[!is.na(all_markers2$actigraphy.Start), ])
+  all_markers$algo.Start <- all_markers2$algo.Start
+  all_markers$algo.Stop <- all_markers2$algo.Stop; rm(all_markers2)
+  all_markers <- find_main(all_markers, 'algo.Start', 'algo.Stop')
+
+  auto_stats <- calculate_stats(all_markers, epochs_f,  ep_factor)
+  id <- unique(epochs_f$ID)[1]
+
+  ## GETTING FLAGS
+  max_on_diff <- function(x){
+    x <- abs(x)
+    x <- na.omit(x)
+    if(length(x) > 0) {
+      max(x)
+    } else {
+      NA
+    }
+  }
+  diffs1_start <- find_algo_times(
+    diff_df_only = T, ac = all_markers$actigraphy.Start, m = all_markers$marker.Start,
+    l = all_markers$light.Start, d = all_markers$diary.Start, s = 'start') %>%
+    suppressMessages() %>% group_by(row) %>% summarize(start_md = max_on_diff(diff))
+  diffs1_stop <- find_algo_times(
+    diff_df_only = T, ac = all_markers$actigraphy.Stop, m = all_markers$marker.Stop,
+    l = all_markers$light.Stop, d = all_markers$diary.Stop, s = 'stop', end_correction = T) %>%
+    suppressMessages() %>% group_by(row) %>% summarize(stop_md = max_on_diff(diff))
+  diff1 <-  full_join(diffs1_start, diffs1_stop, by = 'row') %>%
+    mutate(max_diff = pmax(start_md, stop_md, na.rm = T)) %>% pull(max_diff)
+
+  all_markers %>% select(algo.Start, algo.Stop)
+  flag1 <- all_markers %>% ungroup() %>%
+    mutate(max_diff = ifelse(is.na(diff1), 1e10, diff1)) %>%
+    filter(Type == 'MAIN') %>%
+    mutate(
+      algo_d = difftime(algo.Stop, algo.Start, units = 'hours'),
+      long = algo_d > 14 & max_diff > algo_d/3*60, # algo_d is in hours
+      short = algo_d < 3 & max_diff > 60, # algo_d is in hours
+    ) %>%
+    left_join(auto_stats %>% filter(INTERVAL == 'REST') %>%  select(start, end, ACSL) %>%
+                mutate(start = ap(start, tz = 'UTC'),
+                       end = ap(end, tz = 'UTC')),
+              by = c('algo.Start' = 'start', 'algo.Stop' = 'end')) %>%
+    mutate(high_sl = ACSL >= 180) %>%
+    select(
+      dayno, Type, algo.Stop, algo.Start, short, long, high_sl, invalid_flag)
+
+  summary_flags <- all_markers %>% group_by(dayno) %>% arrange(algo.Start) %>% mutate(
+    bd = difftime(lead(algo.Start), algo.Stop, units = 'hours'),
+    bd = ifelse(is.na(bd), Inf, bd),
+    md = if_else(is.finite(bd), algo.Stop + bd*60*60/2, as.POSIXct(NA, tz = 'UTC')),
+    md = ifelse(is.na(md), 12, hour(md))) %>%
+    # is_min = bd == min(bd, na.rm = T)) %>%
+    select(dayno, Type, algo.Start, algo.Stop, bd, md) %>%
+    # filter(is_min) %>%
+    mutate(close_bouts = bd < 2 & (md >= 22 | md < 6) ) %>%
+    select(dayno, close_bouts) %>% summarize(close_bouts = sum(close_bouts) > 0) %>% ungroup()
+
+  get_mean_time <- function(df1, nm) {
+    df1 %>% ungroup() %>% filter(Type == 'MAIN') %>%
+      arrange(!!sym(nm)) %>% mutate(
+        c1 = as.POSIXct(substr(!!sym(nm), 12, 19), tz = 'UTC', format = '%H:%M:%S'),
+        md_st = mean(c1),
+        dt_st = difftime(c1, md_st, units = 'hours'),
+        c1 = if_else(
+          dt_st < -12, c1 + hours(24),if_else(
+            dt_st > 12, c1 - hours(24), c1)),
+        dt_st = difftime(c1, md_st, units = 'hours'),
+        mean_st = mean(c1),
+        dt_st = difftime(c1, mean_st, units = 'mins'),
+      ) %>% select(-c1, -md_st, -mean_st)
+  }
+
+  missing_sleep_flag <- epochs_f %>% select(dayno) %>% unique() %>%
+    mutate(missing_sleep = !dayno %in% all_markers$dayno)
+
+  flags <- full_join(flag1, summary_flags, by = 'dayno') %>%
+    full_join(missing_sleep_flag, by = 'dayno') %>%
+    relocate(.after = close_bouts, invalid_flag) %>%
+    mutate(
+      flag = short | long  | high_sl | close_bouts | missing_sleep,
+      day_excl = invalid_flag == 1, across(5:12, as.numeric),
+      across(5:12, function(x) ifelse(is.na(x), 0, x)), ID = id) %>%
+    relocate(ID, dayno, Type, algo.Start, algo.Stop, flag) %>%
+    arrange(ID, dayno)
+  # write.csv(flags, paste0(summary_save_dir, '/stats_', id, '.csv'))
+
+  # EDIT EPOCHS_F INTERVAL STATUSES
+  df <- epochs_f
+  df$Interval.Status.OLD <- df$Interval.Status
+  for(j in seq_len(nrow(all_markers))) {
+    df$Interval.Status[(df$Epoch.Date.Time.f >= (all_markers$algo.Start[j])) &
+                         (df$Epoch.Date.Time.f <= (all_markers$algo.Stop[j])) & (
+                           (df$Interval.Status == 'ACTIVE') |
+                             (df$Interval.Status == 'EXCLUDED')
+                         )] <- 'REST'
+  }
+  for(j in seq_len(nrow(all_markers)+1)) {
+    start1 <- min(df$Epoch.Date.Time.f) - 60
+    stop1 <- max(df$Epoch.Date.Time.f) + 60
+    if(j > 1) {
+      start1 <- all_markers$algo.Stop[j-1]
+    }
+    if(j <= nrow(all_markers)) {
+      stop1 <- all_markers$algo.Start[j]
+    }
+    df$Interval.Status[(df$Epoch.Date.Time.f > start1) &
+                         (df$Epoch.Date.Time.f < stop1) &
+                         (df$Interval.Status %in% c('REST', 'REST-S'))] <- 'ACTIVE'
+  }
+  epochs_f <- df
+
+
   return(list(all_markers = all_markers, epochs_f = epochs_f,
-              ep_factor = ep_factor,
-              invalid_info = invalid_info))
+              stats = auto_stats, flags = flags,
+              invalid_info = invalid_info,
+              ep_factor = ep_factor))
 
   # return(list(epochs = epochs, markers = markers, cleaned_sleep_diary = cleaned_sleep_diary))
 }
