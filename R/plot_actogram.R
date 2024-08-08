@@ -1,5 +1,21 @@
+#' Plot actogram
+#'
+#' use after actiSleep
+#'
+#' @param sd_data epoch level data.frame
+#' @param all_markers marker data.frame
+#' @param dmin minimum day number
+#' @param dmax maximum day number
+#' @param filter_naps true or false on filtering naps
+#' @param db default `'60 min'` tick amount on x-axis
+#' @param flags flag data.frame
+#' @param epoch_length epoch length in minutes
+#' @return a list of data.frames corresponding to properties, statistics, markers,
+#' epochs-level.
+#' @import ggplot2
+#' @export
 plot_actogram <- function(
-    sd_data, all_markers, dmin, dmax, anchor_date, filter_naps =F,
+    sd_data, all_markers, dmin, dmax, filter_naps =F,
     db = '60 min', flags, epoch_length = 1){
   quiet1 <- function(x) suppressMessages(suppressWarnings(x))
   na <- as.POSIXct(NA, tz = 'UTC')
@@ -378,11 +394,11 @@ plot_actogram <- function(
                 fill = rgb(199/255, 104/255, 255/255)) +
       geom_rect(data = temp_datat %>% filter(TYPE == 'NAP'), aes(xmin=sleep_start, xmax=sleep_stop, ymin=-Inf, ymax=Inf),
                 fill = rgb(139/255, 73/255, 178/255)) +
-      geom_rect(aes(xmin=ow_start, xmax=ow_stop, ymin=-Inf, ymax=Inf), fill = rgb(5/255, 1/255, 144/255)) +
       geom_rect(aes(xmin=na_start, xmax=na_stop, ymin=-Inf, ymax=Inf), fill = rgb(131/255, 131/255, 131/255)) +
+      geom_rect(aes(xmin=ow_start, xmax=ow_stop, ymin=-Inf, ymax=Inf), fill = rgb(5/255, 1/255, 144/255)) +
       geom_col(aes(x = Epoch.Date.Time.f + 60*epoch_length/2, y = Activity, color = "black"), show.legend = F,
                width = 60*epoch_length) +
-      geom_line(aes(x = Epoch.Date.Time.f, y = White.Light, color = "orange")) +
+      geom_line(aes(x = Epoch.Date.Time.f, y = White.Light, color = "orange"), show.legend = F) +
       geom_hline(aes(yintercept = light1lux), color = "grey20", lty = 3) +
       geom_point(aes(x = (actigraphy.Start), y = max_point, color = "red", fill = "red"), pch = 25, size = 3, show.legend = F) +
       geom_point(aes(x = (marker.Start), y = max_point*3/6, color = "blue", fill = "blue", alpha = as.character(press_flag)), pch = 25, size = 3, show.legend = F) +
@@ -404,7 +420,7 @@ plot_actogram <- function(
                        expand = expansion(mult = 0.01), timezone='UTC',
                        limits = c(as.POSIXct('12:01:00', format = '%H:%M:%S', tz='UTC'),
                                   as.POSIXct('12:00:00', format = '%H:%M:%S', tz='UTC') + 24*60*60)) +
-      theme(legend.position = "bottom") +   guides(alpha = "none") } -> start_main_fig
+      theme(legend.position = "bottom") + guides(alpha = "none") } -> start_main_fig
 
   return(start_main_fig)
 }

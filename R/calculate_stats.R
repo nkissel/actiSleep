@@ -1,206 +1,102 @@
-# all_markers, epochs_f,  ep_factor, watch, dir = 'summary_dataV/'
-
+#' Calculate statistics
+#'
+#' This function calculates statistics from marker and epoch data
+#'
+#' @param all_markers description
+#' @param epochs_f description
+#' @param ep_factor description
+#' @import dplyr
+#' @import lubridate
+#' @export
 calculate_stats <- function(all_markers, epochs_f, ep_factor) {
+  # a comment
+  find_chains <- function(intervals, interval_lvls, time) {
+    grp = ifelse(intervals %in% interval_lvls, 1, 0)
+    grp = ifelse(lag(grp, default = 0) == 1 & grp == 1, 0, grp)
+    grp = cumsum(grp)
+    grp = ifelse(intervals %in% interval_lvls, grp, NA)
+    return(grp)
+  }
 
   get_starts_ends <- function(df) {
-    # browser()
-    df$rwn <- 1:nrow(df)
-    rle1 <- rle(df$Interval.Status)
-    data.frame(rle1$lengths, rle1$values)
+    dfn <- df %>% mutate(
+      slp_group = find_chains(Interval.Status, c('REST-S'), Epoch.Date.Time.f),
+      rest_group = find_chains(Interval.Status, c('REST', 'REST-S'), Epoch.Date.Time.f),
+      active_group = find_chains(Interval.Status, c('ACTIVE'), Epoch.Date.Time.f),
+      excluded_group = find_chains(Interval.Status, c('EXCLUDED'), Epoch.Date.Time.f))
 
-    r_which_a <- which(rle1$values == 'ACTIVE')
+    df1 <- dfn %>% filter(!is.na(slp_group)) %>% group_by(slp_group) %>%
+      summarise(start = min(Epoch.Date.Time.f),
+                stop = max(Epoch.Date.Time.f)) %>% mutate(INTERVAL = 'SLEEP')
+    df2 <- dfn %>% filter(!is.na(rest_group)) %>% group_by(rest_group) %>%
+      summarise(start = min(Epoch.Date.Time.f),
+                stop = max(Epoch.Date.Time.f)) %>% mutate(INTERVAL = 'REST')
+    df3 <- dfn %>% filter(!is.na(active_group)) %>% group_by(active_group) %>%
+      summarise(start = min(Epoch.Date.Time.f),
+                stop = max(Epoch.Date.Time.f)) %>% mutate(INTERVAL = 'ACTIVE')
+    df4 <- dfn %>% filter(!is.na(excluded_group)) %>% group_by(excluded_group) %>%
+      summarise(start = min(Epoch.Date.Time.f),
+                stop = max(Epoch.Date.Time.f)) %>% mutate(INTERVAL = 'EXCLUDED')
 
-    r_which_ae <- which(rle1$values %in% c('ACTIVE', 'EXCLUDED'))
-    row_rest_start <- cumsum(rle1$lengths)[r_which_ae] + 1
-    row_rest_start <- na.omit(ifelse(row_rest_start > nrow(df), NA, row_rest_start))
-    row_rest_end <- cumsum(rle1$lengths)[r_which_ae - 1]
-    if(length(row_rest_start) > length(row_rest_end)) row_rest_end = c(row_rest_end, nrow(df))
+    sleep_rest <- df1 %>% mutate(
+      linterval_s = interval(start, stop)
+    ) %>% select(-slp_group) %>% cross_join(
+      df2 %>% mutate(
+        linterval_r = interval(start, stop)
+      ) %>% select(-rest_group)
+    ) %>% mutate(
+      overlaps = int_overlaps(linterval_s, linterval_r)
+    ) %>% select(-linterval_s, -linterval_r) %>%
+      filter(overlaps)
 
-    we_start <- which(df$Interval.Status[row_rest_start] %in% c('EXCLUDED', 'ACTIVE'))
-    if(length(we_start) > 0) {
-      row_rest_start <- row_rest_start[-we_start]
+    # WHAT TO DO IF THERE ARE 2 SLEEPS INSIDE ONE REST
+    dup_both <- function(x) duplicated(x, fromLast = F) | duplicated(x, fromLast = T)
+    wdup <- sleep_rest %>% select(start.y, stop.y, INTERVAL.y) %>% dup_both() %>% which()
+    if(length(wdup) > 0) {
+      sleep_rest_dup <- sleep_rest %>% slice(wdup)
+      new_rows <- sleep_rest_dup %>% group_by(start.y, stop.y, INTERVAL.x, INTERVAL.y, overlaps) %>%
+        summarise(start.x = min(start.x), stop.x = max(stop.x)) %>% ungroup()
+      sleep_rest <- sleep_rest %>% slice(-wdup) %>% bind_rows(new_rows) %>%
+        arrange(start.y, start.x)
     }
 
-    we_end <- which(df$Interval.Status[row_rest_end] %in% c('EXCLUDED', 'ACTIVE'))
-    if(length(we_end) > 0) {
-      row_rest_end <- row_rest_end[-we_end]
-    }
 
-    # r_which_s <- which(rle1$values == 'REST-S')
-    # row_sleep_start <- cumsum(rle1$lengths)[r_which_s - 1] + 1
-    # row_sleep_end <- cumsum(rle1$lengths)[r_which_s]
-    # browser()
-    row_sleep_start <- row_sleep_end <- NULL
-    for(i in seq_along(row_rest_start)) {
-      df$rwn[row_rest_start[i]:row_rest_end[i]]
-      df_slp <- df %>% slice(row_rest_start[i]:row_rest_end[i]) %>%
-        filter(Interval.Status == 'REST-S')
-      if(nrow(df_slp) > 0) {
-        df_slp <- df_slp %>%
-          summarise(slp_start_i = min(rwn),
-                    slp_end_i = max(rwn))
-        row_sleep_start[i] <- df_slp$slp_start_i
-        row_sleep_end[i] <- df_slp$slp_end_i
-      } else {
-        row_sleep_start[i] <- NA
-        row_sleep_end[i] <- NA
-      }
+    df1 <- sleep_rest %>% select(start.x, stop.x, INTERVAL.x) %>%
+      rename(start = start.x, stop = stop.x, INTERVAL = INTERVAL.x)
+    df2 <- sleep_rest %>% select(start.y, stop.y, INTERVAL.y) %>%
+      rename(start = start.y, stop = stop.y, INTERVAL = INTERVAL.y)
 
-    }
-
-    if(length(r_which_a) > 0) {
-      if(r_which_a[1] == 1) {
-        row_active_start <- c(1, cumsum(rle1$lengths)[r_which_a - 1] + 1)
-      } else {
-        row_active_start <- cumsum(rle1$lengths)[r_which_a - 1] + 1
-      }
-      row_active_end <- cumsum(rle1$lengths)[r_which_a]
-      r2 <- data.frame(row_active_start, row_active_end)
-    } else {
-      r2 <- data.frame(matrix(nrow = 0, ncol = 2))
-      colnames(r2) <- c('row_active_start', 'row_active_end')
-    }
-
-    # rs <- data.frame(dayno = df$dayno[row_rest_start], row_rest_start)
-    # re <- data.frame(dayno = df$dayno[row_rest_end], row_rest_end)
-    #
-    # ss <- data.frame(dayno = df$dayno[row_sleep_start], row_sleep_start)
-    # se <- data.frame(dayno = df$dayno[row_sleep_end], row_sleep_end)
-    #
-    # as <- data.frame(dayno = df$dayno[row_active_start], row_active_start)
-    # ae <- data.frame(dayno = df$dayno[row_active_end], row_active_end)
-
-
-    # if(length(row_rest_start) > length(row_sleep_start)) {
-    #   for(i in 1:length(row_rest_start)) {
-    #     sum((row_rest_start[i] <= row_sleep_start) &
-    #       (row_rest_end[i] >= row_sleep_start), na.rm = T) -> num_sleep_btwn
-    #     if(num_sleep_btwn == 0) {
-    #       all_b4 <- row_sleep_start[row_sleep_start < row_rest_start[i]]
-    #       all_af <- row_sleep_start[row_sleep_start > row_rest_start[i]]
-    #       row_sleep_start <- c(all_b4, -1, all_af)
-    #
-    #       all_b4 <- row_sleep_end[row_sleep_end < row_rest_end[i]]
-    #       all_af <- row_sleep_end[row_sleep_end > row_rest_end[i]]
-    #       row_sleep_end <- c(all_b4, -1, all_af)
-    #
-    #       print(i)
-    #     }
-    #   }
-    #   row_sleep_start <- ifelse(row_sleep_start == -1, NA, row_sleep_start)
-    #   row_sleep_end <- ifelse(row_sleep_end == -1, NA, row_sleep_end)
-    # }
-
-    if(row_rest_end[1] < row_rest_start[1]) {
-      row_rest_end <- row_rest_end[-1]
-    }
-
-    r1 <- data.frame(row_rest_start, row_rest_end,
-                     row_sleep_start, row_sleep_end)
-    return(list(r1, r2))
+    ret1 <- bind_rows(df1, df2, df3, df4) %>% select(INTERVAL, start, stop)
+    return(ret1)
   }
 
   diff_mins <- function(x) {
     difftime(x[-1], x[-length(x)], units = 'mins')
   }
 
-  # df is epoch level data
-  # new_m are the new rest markers
-  adjust_ends <- function(df, new_m) {
-    df <- unique(df)
-    df <- df %>% arrange(Epoch.Date.Time.f)
-    df$scored_Interval.Status <- df$Interval.Status
-
-    stendl <- get_starts_ends(df)
-    stend <- stendl[[1]]
-
-
-    # new_m <- new_m %>% mutate(Epoch.Date.Time.f = time_orig) %>%
-    #   left_join(df %>% select(Epoch.Date.Time.f, Line), by = 'Epoch.Date.Time.f') %>%
-    #   select(-Epoch.Date.Time.f)
-
-    avail_days <- unique(new_m$dayno)
-    new_m <- new_m %>% ungroup() %>% arrange(time_orig) %>% filter(pos == 'START') %>%
-      mutate(interval_id = seq_len(n())) %>% rbind(
-        new_m %>% ungroup() %>% arrange(time_orig) %>% filter(pos == 'STOP') %>%
-          mutate(interval_id = seq_len(n()))
-      ) %>% arrange(time_orig)
-    intid <- unique(new_m$interval_id)
-
-    for(i in seq_along(intid)) {
-      # df_days <- df$dayno[stend$row_rest_start]
-      # df_days_inds <- which(df_days %in% avail_days)
-      ind1 <- i
-
-      cr <- new_m %>% filter(interval_id == intid[i], pos == 'START')
-      if(substr(paste(cr$time_orig), 18, 19) == '30') {
-        cr$time_orig <- cr$time_orig + 30
-      }
-
-      ind_new_start <- which(df$Epoch.Date.Time.f == cr$time_orig)
-      # dft <- df[ind_new_start,]
-      # ind_new_start <- na.omit(ifelse(dft$day_end_limit < dft$day_begin_limit, NA, ind_new_start))
-      # dft <- df[ind_new_start,]
-      # ind_new_start <- na.omit(ifelse(difftime(dft$day_end_limit,
-      #                                          dft$day_begin_limit, units='hours') < 4 &
-      #                                   i != 1 & i != length(intid), NA, ind_new_start))
-
-      stend_ind <- which.min(abs(stend$row_rest_start - ind_new_start))
-
-      if(ind_new_start < stend$row_rest_start[stend_ind]) {
-        df$scored_Interval.Status[ind_new_start:(stend$row_rest_start[stend_ind] - 0)] <- 'REST'
-      } else if(ind_new_start > stend$row_rest_start[stend_ind]) {
-        df$scored_Interval.Status[(stend$row_rest_start[stend_ind]):(ind_new_start) - 1] <- 'ACTIVE'
-      }
-
-      cr <- new_m %>% filter(interval_id == intid[i], pos == 'STOP')
-      if(substr(paste(cr$time_orig), 18, 19) == '30') {
-        cr$time_orig <- cr$time_orig + 30
-      }
-      ind_new_stop <- which(df$Epoch.Date.Time.f == cr$time_orig)
-      # dft <- df[ind_new_stop,]
-      # ind_new_stop <- na.omit(ifelse(dft$day_end_limit < dft$day_begin_limit, NA, ind_new_stop))
-      # dft <- df[ind_new_stop,]
-      # ind_new_stop <- na.omit(ifelse(difftime(dft$day_end_limit,
-      #                                          dft$day_begin_limit, units='hours') < 4 &
-      #                                   i != 1 & i != length(intid), NA, ind_new_stop))
-      if(length(ind_new_stop) == 0) {
-        ind_new_stop <- nrow(df) # THIS IS SUPER SKETCHY AND MAYBE THE WRONG THING TO DO!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-      }
-
-      if(ind_new_stop < stend$row_rest_end[stend_ind]) {
-        df$scored_Interval.Status[ind_new_stop:(stend$row_rest_end[stend_ind] - 0)] <- 'ACTIVE'
-      } else if(ind_new_start > stend$row_rest_end[stend_ind]) {
-        df$scored_Interval.Status[(stend$row_rest_end[stend_ind]):(ind_new_stop - 1)] <- 'REST'
-      }
-    }
-    return(df)
-  }
-
+  # adjust the interval status for REST intervals, so they agree with markers
+  # not doing this for sleep intervals; they get stitched by get_starts_ends()
   df <- epochs_f
   df$Interval.Status.OLD <- df$Interval.Status
   for(i in 1:nrow(all_markers)) {
     df$Interval.Status[(df$Epoch.Date.Time.f >= all_markers$algo.Start[i]) &
-                         (df$Epoch.Date.Time.f <= all_markers$algo.Stop[i]) & (
+                         (df$Epoch.Date.Time.f < all_markers$algo.Stop[i]) & (
                            (df$Interval.Status == 'ACTIVE') | (df$Interval.Status == 'EXCLUDED') )] <- 'REST'
   }
 
   for(i in 1:(nrow(all_markers)+1)) {
-    start1 <- min(df$Epoch.Date.Time.f) - 60
-    stop1 <- max(df$Epoch.Date.Time.f) + 60
+    start1 <- min(df$Epoch.Date.Time.f) - ep_factor*60
+    stop1 <- max(df$Epoch.Date.Time.f)
     if(i > 1) {
       start1 <- all_markers$algo.Stop[i-1]
     }
     if(i <= nrow(all_markers)) {
       stop1 <- all_markers$algo.Start[i]
     }
-    df$Interval.Status[(df$Epoch.Date.Time.f > start1) &
+    df$Interval.Status[(df$Epoch.Date.Time.f >= start1) &
                          (df$Epoch.Date.Time.f < stop1) &
                          (df$Interval.Status %in% c('REST', 'REST-S'))] <- 'ACTIVE'
   }
-  # table( df$Interval.Status,  df$Interval.Status.OLD)
-  # df %>% filter(Interval.Status == 'ACTIVE', Interval.Status.OLD == 'REST-S') %>%
-  #   pull(Epoch.Date.Time.f)
 
   dfo <- df
   new_m1_start <- all_markers %>% select(dayno, algo.Start, Type, invalid_flag) %>%
@@ -208,11 +104,6 @@ calculate_stats <- function(all_markers, epochs_f, ep_factor) {
   new_m1_stop <- all_markers %>% select(dayno, algo.Stop, Type, invalid_flag) %>%
     rename(time_orig = algo.Stop) %>% mutate(pos = 'STOP')
   new_m1 <- rbind(new_m1_start, new_m1_stop) %>% arrange(time_orig)
-
-
-
-
-
 
   to_adjust <- c('DURATION', 'ACTOT', 'ACMNMIN', 'ACINVAL',
                  'ACINVALPERC', 'ACINVSW', 'ACINVSWPERC', 'ACSL',
@@ -275,55 +166,47 @@ calculate_stats <- function(all_markers, epochs_f, ep_factor) {
   }
 
   get_all_stats <- function(df){
-    # browser()
-    # if(watch == 'Spectrum Plus') {
-    #   ac_thres <- 800
-    #   wake_thres <- 40
-    # } else {
-    #   print('WATCH NOT SUPPORTED')
-    # }
+    start_end_df <- get_starts_ends(df)
 
-    stendl <- get_starts_ends(df)
-    stend <- stendl[[1]]
-    ac_stend <- stendl[[2]]
-    df$rest_group <- 0
-    df$sleep_group <- 0
-    df$ac_group <- 0
-
-    rst <- stend$row_rest_start
-    ren <- stend$row_rest_end
-    sst <- stend$row_sleep_start
-    sen <- stend$row_sleep_end
-    ast <- ac_stend$row_active_start
-    aen <- ac_stend$row_active_end
-
-    # df[ac_stend$row_active_start, ]
-
-    for(i in seq_len(nrow(stend))) {
-      df$rest_group[rst[i]:ren[i]] <- i
-      if(!is.na(sst[i])) {
-        df$sleep_group[sst[i]:sen[i]] <- i
+    make_longer <- function(x, df) {
+      start <- df$start[x]
+      end <- df$stop[x]
+      if(ep_factor == 1) {
+        bym <- '60 sec'
+      } else if(ep_factor == 0.5) {
+        bym <- '30 sec'
       }
-      if(length(ast) > 0) {
-        if(length(ast) >= i) {
-          df$ac_group[ast[i]:aen[i]] <- i
-        }
-      } else {
-        df$ac_group <- NA
-      }
+      data.frame(
+        time = seq(from = start, to = end, by = bym),
+        row_id = x
+      )
     }
+    start_end_df_s <- bind_rows(
+      lapply(seq_len(nrow(start_end_df %>% filter(INTERVAL == 'SLEEP'))),
+             make_longer, start_end_df %>% filter(INTERVAL == 'SLEEP'))) %>%
+      rename(sleep_group = row_id)
+    start_end_df_r <- bind_rows(
+      lapply(seq_len(nrow(start_end_df %>% filter(INTERVAL == 'REST'))),
+             make_longer, start_end_df %>% filter(INTERVAL == 'REST'))) %>%
+      rename(rest_group = row_id)
+    start_end_df_a <- bind_rows(
+      lapply(seq_len(nrow(start_end_df %>% filter(INTERVAL == 'ACTIVE'))),
+             make_longer, start_end_df %>% filter(INTERVAL == 'ACTIVE'))) %>%
+      rename(ac_group = row_id)
 
-    for(i in seq_len(nrow(ac_stend))) {
-      df$ac_group[ast[i]:aen[i]] <- i
-    }
+    group_df <- start_end_df_a %>% full_join(start_end_df_r, by = 'time') %>% full_join(start_end_df_s) %>%
+      rename(Epoch.Date.Time.f = time)
 
-
+    df <- left_join(df, group_df, by = 'Epoch.Date.Time.f') %>%
+      mutate(sleep_group = ifelse(is.na(sleep_group), 0, sleep_group),
+             rest_group = ifelse(is.na(rest_group), 0, rest_group),
+             ac_group = ifelse(is.na(ac_group), 0, ac_group))
 
     calculate_stats <- function(grp, interval_type) {
       ret1 <- df %>% group_by(across(grp)) %>%
         summarise(dayno = min(dayno),
-                  DURATION = difftime(max(Epoch.Date.Time.f), min(Epoch.Date.Time.f), units='mins'),
-                  start = min(Epoch.Date.Time.f), end = max(Epoch.Date.Time.f),
+                  DURATION = difftime(max(Epoch.Date.Time.f) + ep_factor*60, min(Epoch.Date.Time.f), units='mins'),
+                  start = min(Epoch.Date.Time.f), end = max(Epoch.Date.Time.f) + ep_factor*60,
                   ACTOT = sum(Activity, na.rm=T),
                   ACINVAL = sum(is.nan(Activity))*ep_factor,
                   ACWASO = sum(Sleep.Wake, na.rm=T)*ep_factor,
@@ -364,7 +247,7 @@ calculate_stats <- function(all_markers, epochs_f, ep_factor) {
         ret1$ACSLPTOT <- NULL
         ret1$ACSLPCNT <- NULL
       } else if(interval_type == 'REST') {
-        ret1$ACSLPTOT <- NULL
+        # ret1$ACSLPTOT <- NULL
       }
       return(ret1)
     }
@@ -373,12 +256,10 @@ calculate_stats <- function(all_markers, epochs_f, ep_factor) {
     sleep_df <- calculate_stats('sleep_group', 'SLEEP')
     active_df <- calculate_stats('ac_group', 'ACTIVE')
 
-
-
     calculate_SE <- function(sleep_df, rest_df) {
       # browser()
       sleep_df$ACSE <- sleep_df$ACSL <- sleep_df$SNOOZE <- sleep_df$ACSE_SLEEP <- NA
-      rest_df$ACSLPTOT <- rest_df$ACSE <- rest_df$ACSL <- rest_df$SNOOZE <- rest_df$ACSE_SLEEP <- NA
+      rest_df$ACSE <- rest_df$ACSL <- rest_df$SNOOZE <- rest_df$ACSE_SLEEP <- NA
       rest_df$SLP_ONSET <- rest_df$SLP_OFFSET <- as.POSIXct(NA, tz = 'UTC')
       for(i in 1:nrow(sleep_df)) {
         w <- which(rest_df$start <= sleep_df$start[i] & rest_df$end >= sleep_df$end[i])
@@ -387,7 +268,6 @@ calculate_stats <- function(all_markers, epochs_f, ep_factor) {
           sleep_df$ACSE_SLEEP[i] <- sleep_df$ACSLPTOT[i] / as.vector(sleep_df$DURATION[i] - sleep_df$ACINVSW[i]) * 100
           sleep_df$ACSL[i] <- as.numeric(difftime(sleep_df$start[i], rest_df$start[w], units = 'mins'))
           sleep_df$SNOOZE[i] <- as.numeric(difftime(rest_df$end[w], sleep_df$end[i], units = 'mins'))
-          # browser()
 
           rest_df$ACSE[w] <- sleep_df$ACSLPTOT[i] / as.vector(rest_df$DURATION[w] - rest_df$ACINVSW[w]) * 100
           rest_df$ACSE_SLEEP[w] <- sleep_df$ACSLPTOT[i] / as.vector(sleep_df$DURATION[i] - sleep_df$ACINVSW[i]) * 100
@@ -398,7 +278,7 @@ calculate_stats <- function(all_markers, epochs_f, ep_factor) {
           rest_df$SLP_ONSET[w] <- sleep_df$start[i]
           rest_df$SLP_OFFSET[w] <- sleep_df$end[i]
 
-          rest_df$ACSLPTOT[w] <- sleep_df$ACSLPTOT[i]
+          # rest_df$ACSLPTOT[w] <- sleep_df$ACSLPTOT[i]
         }
       }
       return(list(sleep_df, rest_df))
@@ -408,19 +288,12 @@ calculate_stats <- function(all_markers, epochs_f, ep_factor) {
     rest_df <- se_list[[2]]
 
     rest_sleep_df <- dplyr::bind_rows(rest_df, sleep_df)
-
-    # lat <- rest_sleep_df %>% group_by(dayno) %>%
-    #   summarise(SNOOZE = difftime(max(end, na.rm=T), min(end, na.rm=T), units='mins'))
-    # lat$INTERVAL <- 'SLEEP'
-    # rest_sleep_df <- left_join(rest_sleep_df, lat, by = c('dayno', 'INTERVAL'))
     active_rest_sleep_df <- dplyr::bind_rows(active_df, rest_sleep_df)
 
     return(active_rest_sleep_df)
   }
 
-  # df <- adjust_ends(dfo, new_m1)
-  # df$Interval.Status <- df$scored_Interval.Status
-  get_all_stats(df) -> df2
+  df2 <- df %>% mutate(Activity = ifelse(is.na(Activity), 0, Activity)) %>% get_all_stats()
 
   nms <- to_adjust[to_adjust %in% colnames(df2)]
   df2 <- df2 %>% select(c('start', 'end', 'dayno', 'INTERVAL', nms)) %>% arrange(start)
@@ -438,4 +311,3 @@ calculate_stats <- function(all_markers, epochs_f, ep_factor) {
   return(df2)
 
 }
-

@@ -9,6 +9,7 @@
 #' @return a list of data.frames corresponding to properties, statistics, markers,
 #' epochs-level.
 #'
+#' @export
 read_actigraphy <- function(file_name) {
   if(missing(file_name)) stop('Actigraphy file missing')
   if(!file.exists(file_name)) stop('Actigraphy file not found')

@@ -12,7 +12,9 @@
 #' @param time_stop a `POSIXct` object of the stop time
 #' @return list of data.frames for marker start/stop times, epoch-level data,
 #' epoch length, and invalid/removed day information.
-#'
+#' @import dplyr
+#' @import lubridate
+#' @export
 actiSleep <- function(
     epoch_df, diary_df, stats_df, marker_df, time_start = NULL, time_stop = NULL) {
 
@@ -108,25 +110,52 @@ actiSleep <- function(
   ##############################################################################
   #  6) Clean actigraphy defined rest
   ##############################################################################
+  epoch_length <- table(difftime(lead(epochs$Epoch.Date.Time.f), epochs$Epoch.Date.Time.f, units = 'mins'))
+  epoch_length <- as.numeric(names(epoch_length)[which.max(epoch_length)])
+  epochs_f <- add_dayno(epochs, "Epoch.Date.Time.f", anchor_date)
+
   sub_set_cols <- c("ID", "Interval.", "Start.Date.Time.f", "End.Date.Time.f", "Duration")
   stats <- stats_df %>% as.data.frame()
   stats <- filter_time(stats, time_start, time_stop, 'Start.Date.Time.f')
 
-
+  invalid_info_day <- epochs_f %>% group_by(dayno) %>% summarize(
+    total_time = n(),
+    invalid_activity = sum(is.na(Activity)) * epoch_length,
+    invalid_sw = sum(is.na(Sleep.Wake)) * epoch_length,
+    invalid_4hr = ifelse(invalid_activity >= 60*4, 1, 0))
   stats_f <- add_dayno(stats, "Start.Date.Time.f", anchor_date) %>%
     filter(Interval.Type %in% c('ACTIVE', 'REST', 'SLEEP', 'EXCLUDED'))
-  stats_f <- stats_f %>% group_by(dayno) %>%
-    mutate(duration_custom = difftime(End.Date.Time.f, Start.Date.Time.f, units='mins'),
-           Inv.Time.AC2 = ifelse(is.na(Inv.Time.AC), duration_custom, Inv.Time.AC)) %>%
-    summarise(tot_inv = sum(Inv.Time.AC2, na.rm = T)) %>%
-    right_join(stats_f, by = 'dayno') %>%
-    mutate(invalid_flag = ifelse(Inv.Time.AC >= 15 | tot_inv >= 60*4, 1, 0))
+  if(!'Inv.Time.SW' %in% colnames(stats_f)) {
+    sleep_stats <- stats_f %>% filter(Interval.Type == "SLEEP")
+    slp_days <- sort(unique(sleep_stats$dayno))
+    sleep_invalidv <- NULL
+    for(i in seq_along(unique(slp_days))) {
+      sleep_statst <- sleep_stats %>% filter(dayno == slp_days[i])
+      invt <- NULL
+      for(j in seq_len(nrow(sleep_statst))) {
+        invt[j] <- epochs_f %>% filter(Epoch.Date.Time.f >= sleep_statst$Start.Date.Time.f[j],
+                            Epoch.Date.Time.f < sleep_statst$End.Date.Time.f[j]) %>%
+          summarize(si = sum(is.na(Sleep.Wake))) %>% pull(si)
+      }
+      sleep_invalidv[i] <- sum(invt)*epoch_length
+    }
+    invalid_info_slp <- data.frame(dayno = slp_days, sleep_invalid = sleep_invalidv)
+  } else {
+    invalid_info_slp <- stats_f %>% filter(Interval.Type == "SLEEP") %>% group_by(dayno) %>%
+      summarize(sleep_invalid = sum(Inv.Time.SW, na.rm = T))
+  }
+  invalid_info <- invalid_info_day %>% select(dayno, invalid_4hr) %>%
+    full_join(invalid_info_slp) %>% mutate(
+      sleep_invalid = ifelse(is.na(sleep_invalid), 0, sleep_invalid),
+      sleep_invalid = sleep_invalid > 15,
+      invalid_flag = ifelse(invalid_4hr + sleep_invalid > 0, 1, 0)) %>%
+    select(dayno, invalid_flag)
+  stats_f <- left_join(stats_f, invalid_info, by = 'dayno')
 
   # add invalid flag to summary info
-  rest_data <- stats_f %>%
-    mutate(invalid_flag = ifelse(Inv.Time.AC >= 15 | tot_inv >= 60*4, 1, 0)) %>%
-    filter(Interval.Type == "REST") %>%
+  rest_data <- stats_f %>% filter(Interval.Type == "REST") %>%
     dplyr::select(all_of(c(sub_set_cols, 'invalid_flag'))) %>% as.data.frame()
+  initial_rest <- add_dayno(rest_data, "Start.Date.Time.f", anchor_date)
 
   if(nrow(rest_data) == 0) {
     return(NULL)
@@ -144,27 +173,6 @@ actiSleep <- function(
   # if(is.null(time_start) & !is.null(time_stop)) {
   #   rest_data <- rest_data %>% filter(Start.Date.Time.f < time_stop)
   # }
-
-  # get invalid day information
-  invalid_info <- stats_f %>%  select(dayno, tot_inv) %>% unique()
-  invalid_info_slp <- stats_f %>% filter(Interval.Type == "SLEEP") %>% group_by(dayno) %>%
-    summarize(sleep_invalid = sum(Inv.Time.AC, na.rm = T))
-  invalid_info <- invalid_info %>% left_join(invalid_info_slp, by = 'dayno') %>%
-    mutate(sleep_invalid = ifelse(is.na(sleep_invalid), 0, sleep_invalid))
-  invalid_info <- invalid_info %>%
-    mutate(invalid_flag = ifelse(tot_inv >= 60*4 | sleep_invalid >= 15, 1, 0)) %>%
-    select(dayno, invalid_flag)
-  invalid_info <- invalid_info
-
-  initial_rest <- add_dayno(rest_data, "Start.Date.Time.f", anchor_date)
-
-  epochs_f <- add_dayno(epochs, "Epoch.Date.Time.f", anchor_date)
-  epochs_f <- fix_afternoon_rest(epochs_f, initial_rest, "End.Date.Time.f")
-  epoch_length <- table(difftime(lead(epochs_f$Epoch.Date.Time.f), epochs_f$Epoch.Date.Time.f, units = 'mins'))
-  epoch_length <- as.numeric(names(epoch_length)[which.max(epoch_length)])
-
-
-  rm(epochs_f)
 
   rest_data <- initial_rest %>%
     mutate(Duration = as.numeric(difftime(End.Date.Time.f, Start.Date.Time.f, units = 'mins')))
@@ -392,7 +400,7 @@ actiSleep <- function(
               by = c('algo.Start' = 'start', 'algo.Stop' = 'end')) %>%
     mutate(high_sl = ACSL >= 180) %>%
     select(
-      dayno, Type, algo.Stop, algo.Start, short, long, high_sl, invalid_flag)
+      dayno, Type, algo.Stop, algo.Start, short, long, high_sl)
 
   summary_flags <- all_markers %>% group_by(dayno) %>% arrange(algo.Start) %>% mutate(
     bd = difftime(lead(algo.Start), algo.Stop, units = 'hours'),
@@ -425,7 +433,8 @@ actiSleep <- function(
 
   flags <- full_join(flag1, summary_flags, by = 'dayno') %>%
     full_join(missing_sleep_flag, by = 'dayno') %>%
-    relocate(.after = close_bouts, invalid_flag) %>%
+    full_join(invalid_info, by = 'dayno') %>%
+    relocate(.after = missing_sleep, invalid_flag) %>%
     mutate(
       flag = short | long  | high_sl | close_bouts | missing_sleep,
       day_excl = invalid_flag == 1, across(5:12, as.numeric),

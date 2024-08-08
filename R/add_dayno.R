@@ -9,47 +9,62 @@
 #' @param known_start start datetime of the observation period for which day
 #' number is anchored. Must be class `POSIXct`.
 #' @return a data.frame with additional column `dayno`
-
+#' @import dplyr
+#' @import lubridate
+#' @export
 add_dayno <- function(mydata, date_time_column, known_start) {
   if(!(date_time_column %in% colnames(mydata))) {
     stop("date_time_column not found in the supplied data.frame")
   }
+  mydata <- as.data.frame(mydata)
 
-  mydata$oldid <- mydata$ID
-  mydata$ID <- paste0(mydata$ID)
-  mydata$ID <- as.numeric(as.factor(mydata$ID))
-
+  if('ID' %in% colnames(mydata)) {
+    remove_ID <- F
+  } else {
+    mydata$ID <- 0
+    remove_ID <- T
+  }
   # mydata <- mydata %>% arrange(!!sym(date_time_column))
-  mydata <- mydata %>% arrange(pick(matches(c(date_time_column))))
+  ids <- unique(mydata$ID)
 
-  # ID changepoints (probably aren't any)
-  changepoints <- c(1, which(diff(mydata$ID) != 0) + 1)
-  ids <- mydata$ID[changepoints]
-
-  # setting reference/ dates
-  mindate <- known_start
+  mydata <- mydata %>% mutate(ID = factor(ID, levels = ids)) %>%
+    arrange(!!sym('ID'), !!sym(date_time_column))
 
   # minimum date starting at noon
-  ref_date1 <- date(lubridate::ymd_hms(mindate)) + hours(12)
+  if(nchar(as.character(known_start)) == 10) {
+    ref_date1 <- as.Date(ymd(known_start)) + hours(12)
+  } else {
+    ref_date1 <- as.Date(ymd_hms(known_start)) + hours(12)
+  }
 
-  # is minimum start date after the start of the reference point?
-  which_timeb4 <- as.numeric(difftime(mindate, ref_date1) < 0)
-  ref_date1[which_timeb4] <- ref_date1[which_timeb4] - days(1) # if yes, set it back 24 hours to get the start of that same day (noon to noon)
+  # # is minimum start date after the start of the reference point?
+  # which_timeb4 <- difftime(known_start, ref_date1) < 0
+  # # if yes, set it back 24 hours to get the start of that same day (noon to noon)
+  # ref_date1[which_timeb4] <- ref_date1[which_timeb4] - days(1)
 
   ref_date2 <- as.POSIXct(character(0), tz = "UTC")
   for(i in seq_along(ids)) {
     ref_date2 <- c(ref_date2, rep(ref_date1[i], length(which(mydata$ID == ids[i]))))
   }
 
-  # assigning daynumbers
-  dayno <- c()
+  # assigning day numbers
+  dayno <- NULL
   for(i in seq_along(ids)) {
     inx <- which(mydata$ID == ids[i]) # grab rows corresponding to each ID
-    dayno <- c(dayno, ceiling(difftime(mydata[inx, date_time_column],
-                                       ref_date2[inx], units = "days")))
+    dayno <- c(dayno, ceiling(difftime(
+      mydata[inx, date_time_column], ref_date2[inx], units = "days")))
   }
-  mydata$dayno <- dayno
-  mydata$ID  <- mydata$oldid
-  mydata$oldid <- NULL
+
+  if(length(ids) == 0) {
+    mydata$dayno <- mydata$ID
+  } else {
+    mydata$dayno <- dayno
+  }
+
+  if(remove_ID) {
+    mydata$ID <- NULL
+  } else {
+    mydata <- mydata %>% mutate(ID = as.character(ID))
+  }
   return(mydata)
 }

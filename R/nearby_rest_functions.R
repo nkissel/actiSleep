@@ -8,7 +8,7 @@
 #' @param nmin number of minutes in-between intervals
 #' @return a data.frame with added `interval_match` variable denoting the row
 #' index of the rest interval within `nmin` minutes of the current row.
-#'
+#' @export
 find_nearby_rest <- function(mydata, nmin = 30){
   mydata %>%
     arrange(Start.Date.Time.f) %>%
@@ -35,7 +35,7 @@ find_nearby_rest <- function(mydata, nmin = 30){
 #' @param mydata a data.frame of start/end rest that has a `dayno` column
 #' @return a data.frame with added `interval_match` variable denoting the row
 #' index of the rest interval within `nmin` minutes of the current row.
-#'
+#' @export
 find_nocturnal_awakening <- function(mydata){
 
   mdtemp <- mydata %>%
@@ -81,7 +81,7 @@ find_nocturnal_awakening <- function(mydata){
 #'
 #' @param mydata a data.frame of start/end rest that has a `dayno` column
 #' @return a data.frame with updated start and end times of rest intervals
-#'
+#' @export
 update_sleep <- function(mydata){
   mydata %>% mutate(
     updated.Start = if_else(
@@ -100,6 +100,7 @@ update_sleep <- function(mydata){
     ungroup() %>% filter(is_real_max | Type == 'NAP') %>% select(-is_real_max)
 }
 
+#' @export
 update_sleep2 <- function(mydata){
 
   # mydata <- data.frame(ind = 1:6, interval_match = c(2,3,0,5,6,0), Start.Date.Time.f = c(5:7, 9:11),

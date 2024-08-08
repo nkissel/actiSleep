@@ -1,3 +1,5 @@
+
+#' @export
 to_dec <- function(x, add = T) {
   w <- which(!is.na(x))
   h <- m <- rep(-1, length(x))
@@ -12,17 +14,52 @@ to_dec <- function(x, add = T) {
 
 }
 
-to_time <- function(x) {
-  # x = c(22.52, 11.11)
-
-  h <- floor(x)
-  minsec <- (x - h)*60
-  min <- round(minsec)
-  h <- ifelse(h == 24, 0, h)
-  as.POSIXct(paste0(h, ':', min, ':00'), format = '%H:%M:%S', tz='UTC')
+#' @export
+to_dec2 <- function(x, add = T, tz = 'UTC') {
+  if(class(x) == 'character') {
+    x <- if_else(nchar(x) == 10, as.POSIXct(x, '%Y-%m-%d', tz = tz),
+            as.POSIXct(x, '%Y-%m-%d %H:%M:%S', tz = tz))
+  }
+  x <- as.POSIXct(paste(Sys.Date(), format(x, '%H:%M:%S')), format = '%Y-%m-%d %H:%M:%S', tz = tz)
+  if(add) {
+    add <- T
+  } else {
+    add <- T
+  }
+  y <- x
+  w <- which(!is.na(x))
+  y[w] <- x[w] + hours(24)
+  median_time <- median(x[w])
+  dt <- function(x, y) difftime(x, y, unit = 'mins')
+  if(add) {
+    to_add <- abs(dt(median_time, x[w])) > abs(dt(median_time, y[w]))
+  }
+  h <- m <- rep(-1, length(x))
+  h[w] <- hour(x[w])
+  m[w] <- minute(x[w])
+  if(add) {
+    h[w] <- ifelse(to_add, h[w] + 24, h[w])
+  }
+   h + m/60
 
 }
 
+#' @export
+to_time <- function(x) {
+  # x = c(22.52, 11.11)
+  midnight <- as.POSIXct('00:00:00', format = '%H:%M:%S', tz='UTC')
+
+  dec_to_midn <- x - 24
+  h <- floor(dec_to_midn)
+  minsec <- (dec_to_midn - h)*60
+  min <- floor(minsec)
+  sec <- round((minsec - min) * 60)
+
+  midnight + hours(h) + minutes(min) + seconds(sec)
+
+}
+
+#' @export
 date2noon <- function(x, format, tz = 'UTC') {
   as.POSIXct(paste0(x, ' 12:00:00'), format = format, tz = tz)
 }
@@ -139,12 +176,14 @@ remove_if_EXCLUDED <- function(x, epochs_f) {
     pull(Epoch.Date.Time.f)
 }
 
+#' @export
 tochr <- function(x) {
   x = as.character(x)
   x = ifelse(nchar(x) == 10, paste0(x, ' 00:00:00'), x)
   x
 }
 
+#' @export
 ap <- function(z, tz = 'UTC') {
   if(class(z)[1] == 'character') {
     z <- tochr(z)

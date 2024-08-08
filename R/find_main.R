@@ -1,11 +1,20 @@
+#' Find main/nap
+#'
+#' find main/nap
+#'
+#' @param mydata epoch level data.frame
+#' @param col1 start column name string
+#' @param col2 stop column name string
+#' @import dplyr
+#' @export
 find_main <- function(mydata, col1, col2){
 
   # wind_thres <- 4
   mdtemp <- mydata %>%
-    mutate(start = to_dec(!!sym(col1)),
-           end = to_dec(!!sym(col2), add=F),
-           end = ifelse(end < start, end + 24, end),
-           mid = (start + end) / 2,
+    mutate(startc = to_dec(!!sym(col1)),
+           endc = to_dec(!!sym(col2), add=F),
+           endc = ifelse(endc < startc, endc + 24, endc),
+           mid = (startc + endc) / 2,
            duration = abs(difftime(!!sym(col1), !!sym(col2), units = 'mins'))) %>%
     group_by(dayno) %>%
     mutate(rest_obs = max(row_number()),
@@ -14,8 +23,8 @@ find_main <- function(mydata, col1, col2){
 
   avg <- mdtemp %>%
     filter(main_or_nap == 'MAIN') %>% ungroup() %>%
-    summarize(avg_start = median(start,na.rm=T),
-              avg_end = median(end,na.rm=T),
+    summarize(avg_startc = median(startc,na.rm=T),
+              avg_endc = median(endc,na.rm=T),
               avg_mid = median(mid,na.rm=T))
 
   mdtemp$avg_mid <- avg$avg_mid

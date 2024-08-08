@@ -1,6 +1,6 @@
 Package: actiSleep
 Title: A Package for Actigraphy Processing
-Version: 0.0.1.9000
+Version: 0.1.0
 Authors@R: 
     person("Nicholas", "Kissel", ,"nkissel@andrew.cmu.edu", role = c("aut", "cre"),
            comment = c(ORCID = "YOUR-ORCID-ID"))
