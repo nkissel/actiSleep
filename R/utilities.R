@@ -15,48 +15,58 @@ to_dec <- function(x, add = T) {
 }
 
 #' @export
-to_dec2 <- function(x, add = T, tz = 'UTC') {
-  if(class(x) == 'character') {
+to_dec2 <- function(x, tz = 'UTC', grid_length = 100, ...) {
+  if(grid_length < 3) {
+    grid_length <- 3
+  }
+  if('character' %in% class(x)) {
     x <- if_else(nchar(x) == 10, as.POSIXct(x, '%Y-%m-%d', tz = tz),
-            as.POSIXct(x, '%Y-%m-%d %H:%M:%S', tz = tz))
+                 as.POSIXct(x, '%Y-%m-%d %H:%M:%S', tz = tz))
   }
-  x <- as.POSIXct(paste(Sys.Date(), format(x, '%H:%M:%S')), format = '%Y-%m-%d %H:%M:%S', tz = tz)
-  if(add) {
-    add <- T
-  } else {
-    add <- T
-  }
-  y <- x
-  w <- which(!is.na(x))
-  y[w] <- x[w] + hours(24)
-  median_time <- median(x[w])
   dt <- function(x, y) difftime(x, y, unit = 'mins')
-  if(add) {
-    to_add <- abs(dt(median_time, x[w])) > abs(dt(median_time, y[w]))
-  }
-  h <- m <- rep(-1, length(x))
-  h[w] <- hour(x[w])
-  m[w] <- minute(x[w])
-  if(add) {
-    h[w] <- ifelse(to_add, h[w] + 24, h[w])
-  }
-   h + m/60
 
+  time_anchored_on_center <- function(center_time, x, y, z) {
+    to_add <- abs(dt(center_time, x)) > abs(dt(center_time, y))
+    to_add <- ifelse(is.na(to_add), F, to_add)
+    to_sub <- abs(dt(center_time, x)) > abs(dt(center_time, z))
+    to_sub <- ifelse(is.na(to_sub), F, to_sub)
+
+    h <- ms <- rep(NA, length(x))
+    h <- hour(x)
+    ms <- minute(x) + second(x) / 60
+    h <- ifelse(to_add, h + 24,
+                ifelse(to_sub, h - 24, h))
+
+    rt <- h + ms/60
+    return(rt)
+  }
+
+  x <- as.POSIXct(paste(Sys.Date(), format(x, '%H:%M:%S')), format = '%Y-%m-%d %H:%M:%S', tz = tz)
+  y <- x + hours(24)
+  z <- x - hours(24)
+  center_opts <- seq(min(x, na.rm = T), max(x, na.rm = T), len = grid_length)
+  candidate_list <- lapply(center_opts, time_anchored_on_center, x, y, z)
+  fin <- candidate_list[[which.min(lapply(candidate_list, sd))]]
+  if(max(fin) >= 48) {
+    fin <- fin - 24
+  }
+  if(min(fin) <= -24) {
+    fin <- fin + 24
+  }
+  return(fin)
 }
 
 #' @export
 to_time <- function(x) {
-  # x = c(22.52, 11.11)
   midnight <- as.POSIXct('00:00:00', format = '%H:%M:%S', tz='UTC')
 
-  dec_to_midn <- x - 24
+  dec_to_midn <- x - 24 # or could subtract 0, i don't think this matters
   h <- floor(dec_to_midn)
-  minsec <- (dec_to_midn - h)*60
+  minsec <- (dec_to_midn - h) * 60
   min <- floor(minsec)
   sec <- round((minsec - min) * 60)
 
   midnight + hours(h) + minutes(min) + seconds(sec)
-
 }
 
 #' @export

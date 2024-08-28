@@ -10,13 +10,16 @@
 #' @param marker_df a data frame of button pushes
 #' @param time_start a `POSIXct` object of the start time
 #' @param time_stop a `POSIXct` object of the stop time
+#' @param max_invalid_time maximum number of invalid hours per day; if over, the
+#' data for a given day will be flagged as being "invalid."
 #' @return list of data.frames for marker start/stop times, epoch-level data,
 #' epoch length, and invalid/removed day information.
 #' @import dplyr
 #' @import lubridate
 #' @export
 actiSleep <- function(
-    epoch_df, diary_df, stats_df, marker_df, time_start = NULL, time_stop = NULL) {
+    epoch_df, diary_df, stats_df, marker_df, time_start = NULL, time_stop = NULL,
+    max_invalid_time = 4, add_na_tails = F) {
 
   filter_time <- function(df, time_start, time_stop, var_name) {
     if(!is.null(time_start)) {
@@ -118,11 +121,50 @@ actiSleep <- function(
   stats <- stats_df %>% as.data.frame()
   stats <- filter_time(stats, time_start, time_stop, 'Start.Date.Time.f')
 
+  if(add_na_tails) {
+    epochs_f <- epochs_f %>% arrange(Epoch.Date.Time.f)
+
+    # FILL INSIDE
+    diff_time <- difftime(lead(epochs_f$Epoch.Date.Time.f), epochs_f$Epoch.Date.Time.f, units = 'mins')
+    epoch_length <- as.numeric(names(table(diff_time))[which.max(table(diff_time))])
+    all_time <- seq(min(epochs_f$Epoch.Date.Time.f, na.rm = T),
+                    max(epochs_f$Epoch.Date.Time.f, na.rm = T), epoch_length*60)
+    time_fill <- all_time[!(all_time %in% epochs_f$Epoch.Date.Time.f)]
+    if(length(time_fill) > 0) {
+      time_fill <- data.frame(ID = epochs_f$ID[1],
+                              Epoch.Date.Time.f = time_fill, Off.Wrist.Status = 1, Activity = NaN,
+                              Sleep.Wake = NaN, White.Light = NaN, Interval.Status = 'EXCLUDED')
+      epochs_f <- bind_rows(epochs_f, time_fill) %>% arrange(Epoch.Date.Time.f)
+      epochs_f <- add_dayno(epochs_f, "Epoch.Date.Time.f", anchor_date)
+
+    }
+
+    # FILL TAILS
+    min_time <- epochs_f %>% filter(Epoch.Date.Time.f == min(Epoch.Date.Time.f)) %>% slice(1)
+    max_time <- epochs_f %>% filter(Epoch.Date.Time.f == max(Epoch.Date.Time.f)) %>% slice(1)
+    new_min <- as.Date(min_time$Epoch.Date.Time.f) + hours(12) + minutes(1)
+    new_max <- as.Date(max_time$Epoch.Date.Time.f) + hours(12)
+    if(max_time$Epoch.Date.Time.f > new_max) {
+      new_max <- new_max + days(1)
+    }
+
+    all_time <- seq(new_min, new_max, epoch_length*60)
+    time_fill <- all_time[!(all_time %in% epochs_f$Epoch.Date.Time.f)]
+    if(length(time_fill) > 0) {
+      time_fill <- data.frame(ID = epochs_f$ID[1],
+                              Epoch.Date.Time.f = time_fill, Off.Wrist.Status = 1, Activity = NaN,
+                              Sleep.Wake = NaN, White.Light = NaN, Interval.Status = 'EXCLUDED')
+      epochs_f <- bind_rows(epochs_f, time_fill) %>% arrange(Epoch.Date.Time.f)
+      epochs_f <- add_dayno(epochs_f, "Epoch.Date.Time.f", anchor_date)
+
+    }
+  }
+
   invalid_info_day <- epochs_f %>% group_by(dayno) %>% summarize(
     total_time = n(),
     invalid_activity = sum(is.na(Activity)) * epoch_length,
     invalid_sw = sum(is.na(Sleep.Wake)) * epoch_length,
-    invalid_4hr = ifelse(invalid_activity >= 60*4, 1, 0))
+    invalid_4hr = ifelse(invalid_activity >= 60*max_invalid_time, 1, 0))
   stats_f <- add_dayno(stats, "Start.Date.Time.f", anchor_date) %>%
     filter(Interval.Type %in% c('ACTIVE', 'REST', 'SLEEP', 'EXCLUDED'))
   if(!'Inv.Time.SW' %in% colnames(stats_f)) {

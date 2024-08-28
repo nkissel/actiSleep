@@ -94,7 +94,9 @@ plot_actogram <- function(
 
   t <- plt_d %>% select(real_dayno, Epoch.Date.Time.f) %>% group_by(real_dayno) %>%
     summarize(m = min(Epoch.Date.Time.f)) %>%
-    mutate(start_weekday = weekdays(m)) %>%
+    mutate(start_weekday = weekdays(m),
+           disp_date = as.Date(m),
+           start_weekday = paste0(start_weekday, ', ', disp_date)) %>%
     select(real_dayno, start_weekday)
   plt_d <- left_join(plt_d, t, by = 'real_dayno')
 

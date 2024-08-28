@@ -10,7 +10,8 @@ actiSleep(
   stats_df,
   marker_df,
   time_start = NULL,
-  time_stop = NULL
+  time_stop = NULL,
+  max_invalid_time = 4
 )
 }
 \arguments{
@@ -25,6 +26,9 @@ actiSleep(
 \item{time_start}{a \code{POSIXct} object of the start time}
 
 \item{time_stop}{a \code{POSIXct} object of the stop time}
+
+\item{max_invalid_time}{maximum number of invalid hours per day; if over, the
+data for a given day will be flagged as being "invalid."}
 }
 \value{
 list of data.frames for marker start/stop times, epoch-level data,
