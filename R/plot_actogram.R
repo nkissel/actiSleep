@@ -71,15 +71,22 @@ plot_actogram <- function(
 
   plt_d <- sd_data %>% filter(dayno >= dmin - 1, dayno <= dmax + 1) %>%
     mutate(algo.Start = ap(algo.Start), algo.Stop = ap(algo.Stop)) %>% arrange(Epoch.Date.Time.f)
+  if(length(unique(plt_d$Interval.Status)) == 1) {
+    if(unique(plt_d$Interval.Status) == 'EXCLUDED') {
+      return(NULL)
+    }
+  }
   plt_d$eff_dayno <- plt_d$dayno; plt_d$dayno <- NULL
   flags <- flags %>%  filter(dayno >= dmin, dayno <= dmax)
 
   pass_noon <- plt_d %>% select(algo.Stop, algo.Start) %>% unique() %>% na.omit
-  if(nrow(pass_noon) == 0) return(NULL)
-  pass_noon$ref <- if_else(as.numeric(substr(tochr(pass_noon$algo.Start), 12, 13)) > 12,
-                           as.Date(pass_noon$algo.Start) + 1, as.Date(pass_noon$algo.Start))
-  pass_noon$ref <- as.POSIXct(paste0(pass_noon$ref, ' 12:00:01'), tz='UTC')
-  pass_noon <- pass_noon %>% filter(ref > algo.Start & ref < algo.Stop)
+  # if(nrow(pass_noon) == 0) return(NULL)
+  if(nrow(pass_noon) > 0) {
+    pass_noon$ref <- if_else(as.numeric(substr(tochr(pass_noon$algo.Start), 12, 13)) > 12,
+                             as.Date(pass_noon$algo.Start) + 1, as.Date(pass_noon$algo.Start))
+    pass_noon$ref <- as.POSIXct(paste0(pass_noon$ref, ' 12:00:01'), tz='UTC')
+    pass_noon <- pass_noon %>% filter(ref > algo.Start & ref < algo.Stop)
+  }
   if(nrow(pass_noon) > 0) {
     for(i in seq_along(pass_noon$algo.Stop)) {
       plt_d$eff_dayno[plt_d$Epoch.Date.Time.f >= pass_noon$algo.Start[i] &
@@ -382,12 +389,6 @@ plot_actogram <- function(
 
 
     pt1 +
-      geom_vline(xintercept = seq(as.POSIXct('12:00:00', format = '%H:%M:%S', tz='UTC'),
-                                  as.POSIXct('12:00:00', format = '%H:%M:%S', tz='UTC')+60*60*24,by=30*60),
-                 col = rgb(216/255, 216/255, 216/255), lwd = 0.5)+
-      geom_vline(xintercept = seq(as.POSIXct('12:15:00', format = '%H:%M:%S', tz='UTC'),
-                                  as.POSIXct('11:45:00', format = '%H:%M:%S', tz='UTC')+60*60*24,by=30*60),
-                 col = rgb(216/255, 216/255, 216/255), lwd = 0.25) +
       geom_rect(data = temp_datat %>% filter(TYPE == 'MAIN'), aes(xmin=algo_start, xmax=algo_stop, ymin=-Inf, ymax=Inf),
                 fill = rgb(185/255, 246/255, 247/255)) +
       geom_rect(data = temp_datat %>% filter(TYPE == 'MAIN'), aes(xmin=sleep_start, xmax=sleep_stop, ymin=-Inf, ymax=Inf),
@@ -398,6 +399,12 @@ plot_actogram <- function(
                 fill = rgb(139/255, 73/255, 178/255)) +
       geom_rect(aes(xmin=na_start, xmax=na_stop, ymin=-Inf, ymax=Inf), fill = rgb(131/255, 131/255, 131/255)) +
       geom_rect(aes(xmin=ow_start, xmax=ow_stop, ymin=-Inf, ymax=Inf), fill = rgb(5/255, 1/255, 144/255)) +
+      geom_vline(xintercept = seq(as.POSIXct('12:00:00', format = '%H:%M:%S', tz='UTC'),
+                                  as.POSIXct('12:00:00', format = '%H:%M:%S', tz='UTC')+60*60*24,by=30*60),
+                 col = rgb(216/255, 216/255, 216/255), lwd = 0.5)+
+      geom_vline(xintercept = seq(as.POSIXct('12:15:00', format = '%H:%M:%S', tz='UTC'),
+                                  as.POSIXct('11:45:00', format = '%H:%M:%S', tz='UTC')+60*60*24,by=30*60),
+                 col = rgb(216/255, 216/255, 216/255), lwd = 0.25) +
       geom_col(aes(x = Epoch.Date.Time.f + 60*epoch_length/2, y = Activity, color = "black"), show.legend = F,
                width = 60*epoch_length) +
       geom_line(aes(x = Epoch.Date.Time.f, y = White.Light, color = "orange"), show.legend = F) +

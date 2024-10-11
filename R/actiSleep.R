@@ -144,9 +144,13 @@ actiSleep <- function(
     max_time <- epochs_f %>% filter(Epoch.Date.Time.f == max(Epoch.Date.Time.f)) %>% slice(1)
     new_min <- as.Date(min_time$Epoch.Date.Time.f) + hours(12) + minutes(1)
     new_max <- as.Date(max_time$Epoch.Date.Time.f) + hours(12)
+    if(min_time$Epoch.Date.Time.f < new_min) {
+      new_min <- new_min - days(1)
+    }
     if(max_time$Epoch.Date.Time.f > new_max) {
       new_max <- new_max + days(1)
     }
+
 
     all_time <- seq(new_min, new_max, epoch_length*60)
     time_fill <- all_time[!(all_time %in% epochs_f$Epoch.Date.Time.f)]
@@ -166,7 +170,8 @@ actiSleep <- function(
     invalid_sw = sum(is.na(Sleep.Wake)) * epoch_length,
     invalid_4hr = ifelse(invalid_activity >= 60*max_invalid_time, 1, 0))
   stats_f <- add_dayno(stats, "Start.Date.Time.f", anchor_date) %>%
-    filter(Interval.Type %in% c('ACTIVE', 'REST', 'SLEEP', 'EXCLUDED'))
+    filter(Interval.Type %in% c('ACTIVE', 'REST', 'SLEEP', 'EXCLUDED')) %>%
+    mutate(dayno = as.numeric(dayno))
   if(!'Inv.Time.SW' %in% colnames(stats_f)) {
     sleep_stats <- stats_f %>% filter(Interval.Type == "SLEEP")
     slp_days <- sort(unique(sleep_stats$dayno))
@@ -402,6 +407,7 @@ actiSleep <- function(
   all_markers$algo.Start <- all_markers2$algo.Start
   all_markers$algo.Stop <- all_markers2$algo.Stop; rm(all_markers2)
   all_markers <- find_main(all_markers, 'algo.Start', 'algo.Stop')
+  all_markers <- add_dayno(all_markers, 'algo.Start', anchor_date) # must do this in case onset crosses noon after selection!
 
   auto_stats <- calculate_stats(all_markers, epochs_f,  ep_factor)
   id <- unique(epochs_f$ID)[1]

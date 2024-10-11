@@ -11,7 +11,8 @@ actiSleep(
   marker_df,
   time_start = NULL,
   time_stop = NULL,
-  max_invalid_time = 4
+  max_invalid_time = 4,
+  add_na_tails = F
 )
 }
 \arguments{

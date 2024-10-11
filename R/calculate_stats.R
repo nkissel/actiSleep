@@ -25,9 +25,13 @@ calculate_stats <- function(all_markers, epochs_f, ep_factor) {
       active_group = find_chains(Interval.Status, c('ACTIVE'), Epoch.Date.Time.f),
       excluded_group = find_chains(Interval.Status, c('EXCLUDED'), Epoch.Date.Time.f))
 
+    # SLEEP INTERVALS MUST BE AT LEAST 15 MINUTES
     df1 <- dfn %>% filter(!is.na(slp_group)) %>% group_by(slp_group) %>%
       summarise(start = min(Epoch.Date.Time.f),
-                stop = max(Epoch.Date.Time.f)) %>% mutate(INTERVAL = 'SLEEP')
+                stop = max(Epoch.Date.Time.f)) %>% mutate(INTERVAL = 'SLEEP') %>%
+      mutate(d = difftime(stop, start, units = 'mins'),
+             r = d >= 15) %>% filter(r) %>%
+      mutate(slp_group = row_number()) %>% select(-d, -r)
     df2 <- dfn %>% filter(!is.na(rest_group)) %>% group_by(rest_group) %>%
       summarise(start = min(Epoch.Date.Time.f),
                 stop = max(Epoch.Date.Time.f)) %>% mutate(INTERVAL = 'REST')
@@ -60,11 +64,24 @@ calculate_stats <- function(all_markers, epochs_f, ep_factor) {
         arrange(start.y, start.x)
     }
 
+    df2_old <- df2 %>% select(-rest_group)
 
     df1 <- sleep_rest %>% select(start.x, stop.x, INTERVAL.x) %>%
       rename(start = start.x, stop = stop.x, INTERVAL = INTERVAL.x)
     df2 <- sleep_rest %>% select(start.y, stop.y, INTERVAL.y) %>%
       rename(start = start.y, stop = stop.y, INTERVAL = INTERVAL.y)
+
+    bdd <- rbind(df2_old, df2)
+    w_del <- which(!(duplicated(bdd, fromLast = T) | duplicated(bdd, fromLast = F)))
+    if(length(w_del) > 0) {
+      for(it0 in seq_along(w_del)) {
+        df$Interval.Status[df$Epoch.Date.Time.f >= df2_old$start[w_del[it0]] &
+                             df$Epoch.Date.Time.f <= df2_old$stop[w_del[it0]]] <- 'ACTIVE'
+      }
+      return(
+        get_starts_ends(df)
+      )
+    }
 
     ret1 <- bind_rows(df1, df2, df3, df4) %>% select(INTERVAL, start, stop)
     return(ret1)
