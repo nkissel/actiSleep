@@ -71,7 +71,7 @@ to_time <- function(x) {
 
 #' @export
 date2noon <- function(x, format, tz = 'UTC') {
-  ifelse(is.na(x), NA,
+  if_else(is.na(x), NA,
          as.POSIXct(paste0(x, ' 12:00:00'), format = format, tz = tz))
 }
 
