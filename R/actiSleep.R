@@ -19,7 +19,7 @@
 #' @export
 actiSleep <- function(
     epoch_df, diary_df, stats_df, marker_df, time_start = NULL, time_stop = NULL,
-    max_invalid_time = 4, add_na_tails = F) {
+    max_invalid_time = 4, add_na_tails = F, light_window = 120, push_window = 60) {
 
   filter_time <- function(df, time_start, time_stop, var_name) {
     if(!is.null(time_start)) {
@@ -336,7 +336,7 @@ actiSleep <- function(
   # Note that this function needs sleep diary data as well just in case we
   # do not have actigraphy rest interval time (e.g. for naps)
   marker_data <- suppressWarnings(suppressMessages(
-    unique(find_markers(updated_sleep_w_diary, markers2, window = 60))))
+    unique(find_markers(updated_sleep_w_diary, markers2, window = push_window))))
 
   ########################################
   ### 9) Merge Actigraphy & sdAM/sdPM ####
@@ -384,11 +384,11 @@ actiSleep <- function(
 
   actigraphy_diary_light_marker <- find_light(
     epochs_f, actigraphy_diary, epoch_length, n = 30,
-    search_window = 120, span1 = span1)
+    search_window = light_window, span1 = span1)
 
   marker_data <- suppressMessages(suppressWarnings(
     find_markers_acdl(actigraphy_diary_light_marker %>%
-                        select(-marker.Start, -marker.Stop), markers2, 60)))
+                        select(-marker.Start, -marker.Stop), markers2, push_window)))
   marker_data <- unique(marker_data)
 
   actigraphy_diary_light_marker <- actigraphy_diary_light_marker %>% mutate(Interval.f = seq_len(n())) %>%
