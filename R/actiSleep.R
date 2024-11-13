@@ -94,7 +94,6 @@ actiSleep <- function(
   anchor_date <- paste0(substr(anchor_date, 1, 10), ' 12:00:00 UTC')
   epochs <- add_dayno(epochs, "Epoch.Date.Time.f", anchor_date)
 
-
   ##############################################################################
   #  5) Clean Sleep Diary
   ##############################################################################
@@ -164,6 +163,16 @@ actiSleep <- function(
     }
   }
 
+
+  if('invalidepoch' %in% colnames(epochs_f)) { # for GGIR compatibility
+    old_activity <- epochs_f %>% pull(Activity)
+    old_sw <- epochs_f %>% pull(Sleep.Wake)
+    epochs_f <- epochs_f %>% mutate(
+      Sleep.Wake = ifelse(invalidepoch == 1, NA, Sleep.Wake),
+      Activity = ifelse(invalidepoch == 1, NA, Activity)
+    )
+  }
+
   invalid_info_day <- epochs_f %>% group_by(dayno) %>% summarize(
     total_time = n(),
     invalid_activity = sum(is.na(Activity)) * epoch_length,
@@ -198,6 +207,10 @@ actiSleep <- function(
       invalid_flag = ifelse(invalid_4hr + sleep_invalid > 0, 1, 0)) %>%
     select(dayno, invalid_flag)
   stats_f <- left_join(stats_f, invalid_info, by = 'dayno')
+
+  if('invalidepoch' %in% colnames(epochs_f)) { # for GGIR compatibility
+    epochs_f <- epochs_f %>% mutate(Sleep.Wake = old_sw, Activity = old_activity)
+  }
 
   # add invalid flag to summary info
   rest_data <- stats_f %>% filter(Interval.Type == "REST") %>%
@@ -241,10 +254,9 @@ actiSleep <- function(
 
 
   #########################################
-  #### 7) Merge Actigraphy & sdAM/sdPM ####
+  #### 7) Merge Actigraphy and diary ####
   #########################################
   # 7. merging in the cleaned sleep diary data into the updated actigraphy data
-  # make sure there aren't any repeat MAIN diary entries
 
   match_diary_act <- function(df1, df2) {
     tmid <- function(x, y) {

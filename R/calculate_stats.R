@@ -311,9 +311,13 @@ calculate_stats <- function(all_markers, epochs_f, ep_factor) {
   }
 
   df2 <- df %>% mutate(Activity = ifelse(is.na(Activity), 0, Activity)) %>% get_all_stats()
+  df2 <- df2 %>% left_join(
+    all_markers %>% select(Type, algo.Start, algo.Stop) %>% mutate(INTERVAL = 'REST'),
+    by = c('start' = 'algo.Start', 'end' = 'algo.Stop', 'INTERVAL')
+  ) %>% arrange(start)
 
   nms <- to_adjust[to_adjust %in% colnames(df2)]
-  df2 <- df2 %>% select(c('start', 'end', 'dayno', 'INTERVAL', nms)) %>% arrange(start)
+  df2 <- df2 %>% select(c('start', 'end', 'dayno', 'INTERVAL', 'TYPE'='Type', nms)) %>% arrange(start)
   df2$algorithm <- 1
   df2$version <- 1
   df2$timestamp <- Sys.time()
