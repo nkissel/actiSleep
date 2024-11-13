@@ -1,6 +1,7 @@
 find_algo_times <- function(
     ac, m, l, d, s = 'start', end_correction = F, diff_df_only = F,
-    exception_window = 120) {
+    exception_window = 120, onset_marker_rank = c('m', 'd', 'l', 'ac'),
+    offset_marker_rank = c('ac', 'l', 'm', 'd')) {
   d <- ifelse(nchar(as.character(d)) == 10, paste0(d, " 00:00:00"), as.character(d))
   l <- ifelse(nchar(as.character(l)) == 10, paste0(l, " 00:00:00"), as.character(l))
   ac <- ifelse(nchar(as.character(ac)) == 10, paste0(ac, " 00:00:00"), as.character(ac))
@@ -42,9 +43,9 @@ find_algo_times <- function(
   }
 
   if(s == 'start') {
-    marker_rank <- c('m', 'd', 'l', 'ac')
+    marker_rank <- onset_marker_rank
   } else  {
-    marker_rank <- c('ac', 'l', 'm', 'd')
+    marker_rank <- offset_marker_rank
   }
   winpick <- function(x, y) {
     if(sum(x > 0 & y == marker_rank[1]) > 0) return(marker_rank[1])
