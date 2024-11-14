@@ -82,7 +82,7 @@ actiSleep <- function(
   min_tz <- format(as.POSIXct(as.character(min(epochs$Epoch.Date.Time.f)), tz = 'America/New_York'), "%Z")
 
   ##############################################################################
-  #  4) Get dayno for epoch data
+  #  1) Get dayno for epoch data
   ##############################################################################
   acti_start_date <- epochs$Epoch.Date.Time.f
   if(length(acti_start_date) == 0) {
@@ -92,10 +92,10 @@ actiSleep <- function(
   acti_start_date <- min(acti_start_date, na.rm = T)
   anchor_date <- acti_start_date #- (24*60*60) # start the day before, because diary reports night before
   anchor_date <- paste0(substr(anchor_date, 1, 10), ' 12:00:00 UTC')
-  epochs <- add_dayno(epochs, "Epoch.Date.Time.f", anchor_date)
+  epochs_f <- add_dayno(epochs, "Epoch.Date.Time.f", anchor_date)
 
   ##############################################################################
-  #  5) Clean Sleep Diary
+  #  2) Clean diary and marker data + add dayno to diary
   ##############################################################################
 
   cleaned_sleep_diary <- add_dayno(diary_df, "diary_start", anchor_date) %>%
@@ -110,22 +110,15 @@ actiSleep <- function(
   }
 
   ##############################################################################
-  #  6) Clean actigraphy defined rest
+  #  3) Add data to tails to populate full day + fill in gaps with missing data
   ##############################################################################
   epoch_length <- table(difftime(lead(epochs$Epoch.Date.Time.f), epochs$Epoch.Date.Time.f, units = 'mins'))
   epoch_length <- as.numeric(names(epoch_length)[which.max(epoch_length)])
-  epochs_f <- add_dayno(epochs, "Epoch.Date.Time.f", anchor_date)
-
-  sub_set_cols <- c("ID", "Interval.", "Start.Date.Time.f", "End.Date.Time.f", "Duration")
-  stats <- stats_df %>% as.data.frame()
-  stats <- filter_time(stats, time_start, time_stop, 'Start.Date.Time.f')
 
   if(add_na_tails) {
     epochs_f <- epochs_f %>% arrange(Epoch.Date.Time.f)
 
     # FILL INSIDE
-    diff_time <- difftime(lead(epochs_f$Epoch.Date.Time.f), epochs_f$Epoch.Date.Time.f, units = 'mins')
-    epoch_length <- as.numeric(names(table(diff_time))[which.max(table(diff_time))])
     all_time <- seq(min(epochs_f$Epoch.Date.Time.f, na.rm = T),
                     max(epochs_f$Epoch.Date.Time.f, na.rm = T), epoch_length*60)
     time_fill <- all_time[!(all_time %in% epochs_f$Epoch.Date.Time.f)]
@@ -163,7 +156,10 @@ actiSleep <- function(
     }
   }
 
-
+  ##############################################################################
+  #  4) Generate invalid falg
+  ##############################################################################
+  # first invalid because of max_invalid_time
   if('invalidepoch' %in% colnames(epochs_f)) { # for GGIR compatibility
     old_activity <- epochs_f %>% pull(Activity)
     old_sw <- epochs_f %>% pull(Sleep.Wake)
@@ -178,6 +174,11 @@ actiSleep <- function(
     invalid_activity = sum(is.na(Activity)) * epoch_length,
     invalid_sw = sum(is.na(Sleep.Wake)) * epoch_length,
     invalid_4hr = ifelse(invalid_activity >= 60*max_invalid_time, 1, 0))
+
+  # second because 15 minutes of invalid sw
+  sub_set_cols <- c("ID", "Interval.", "Start.Date.Time.f", "End.Date.Time.f", "Duration")
+  stats <- stats_df %>% as.data.frame()
+  stats <- filter_time(stats, time_start, time_stop, 'Start.Date.Time.f')
   stats_f <- add_dayno(stats, "Start.Date.Time.f", anchor_date) %>%
     filter(Interval.Type %in% c('ACTIVE', 'REST', 'SLEEP', 'EXCLUDED')) %>%
     mutate(dayno = as.numeric(dayno))
@@ -200,19 +201,25 @@ actiSleep <- function(
     invalid_info_slp <- stats_f %>% filter(Interval.Type == "SLEEP") %>% group_by(dayno) %>%
       summarize(sleep_invalid = sum(Inv.Time.SW, na.rm = T))
   }
+
+  # merge invalid data
   invalid_info <- invalid_info_day %>% select(dayno, invalid_4hr) %>%
     full_join(invalid_info_slp) %>% mutate(
       sleep_invalid = ifelse(is.na(sleep_invalid), 0, sleep_invalid),
       sleep_invalid = sleep_invalid > 15,
       invalid_flag = ifelse(invalid_4hr + sleep_invalid > 0, 1, 0)) %>%
     select(dayno, invalid_flag)
+
+  # attach invalid flag to statistics data
   stats_f <- left_join(stats_f, invalid_info, by = 'dayno')
 
   if('invalidepoch' %in% colnames(epochs_f)) { # for GGIR compatibility
     epochs_f <- epochs_f %>% mutate(Sleep.Wake = old_sw, Activity = old_activity)
   }
 
-  # add invalid flag to summary info
+  ##############################################################################
+  #  5) Extract rest data
+  ##############################################################################
   rest_data <- stats_f %>% filter(Interval.Type == "REST") %>%
     dplyr::select(all_of(c(sub_set_cols, 'invalid_flag'))) %>% as.data.frame()
   initial_rest <- add_dayno(rest_data, "Start.Date.Time.f", anchor_date)
@@ -221,22 +228,12 @@ actiSleep <- function(
     return(NULL)
   }
 
-  # # remove days if not in time interval
-  # if(!is.null(time_start)) {
-  #   if(!is.null(time_stop)) {
-  #     rest_data <- rest_data %>% filter(Start.Date.Time.f >= time_start,
-  #                                       Start.Date.Time.f < time_stop)
-  #   } else {
-  #     rest_data <- rest_data %>% filter(Start.Date.Time.f >= time_start)
-  #   }
-  # }
-  # if(is.null(time_start) & !is.null(time_stop)) {
-  #   rest_data <- rest_data %>% filter(Start.Date.Time.f < time_stop)
-  # }
-
   rest_data <- initial_rest %>%
     mutate(Duration = as.numeric(difftime(End.Date.Time.f, Start.Date.Time.f, units = 'mins')))
 
+  ##############################################################################
+  #  6) Merge nearby rest(s)
+  ##############################################################################
   # 6.a) Making day number index
   rest <- add_dayno(rest_data, "Start.Date.Time.f", anchor_date) %>%
     relocate(ID, dayno) %>% arrange(Start.Date.Time.f)
@@ -251,11 +248,9 @@ actiSleep <- function(
     update_sleep2() %>% left_join(invalid_info, by = 'dayno') %>% unique()
   # Updated actigraphy rest-intervals where naps are merged in if they should be.
 
-
-
-  #########################################
-  #### 7) Merge Actigraphy and diary ####
-  #########################################
+  ##############################################################################
+  #### 7) Merge Actigraphy and diary
+  ##############################################################################
   # 7. merging in the cleaned sleep diary data into the updated actigraphy data
 
   match_diary_act <- function(df1, df2) {
@@ -352,7 +347,6 @@ actiSleep <- function(
   #####################################
   #### Getting White Light Readings, which live in epoch-level data
   # 10.a) First get day number for epoch data
-  epochs_f <- add_dayno(epochs, "Epoch.Date.Time.f", anchor_date)
   # browser()
   epochs_f <- fix_afternoon_rest(epochs_f, updated_sleep, "updated.End")
 
