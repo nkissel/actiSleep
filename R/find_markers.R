@@ -1,4 +1,4 @@
-find_markers <- function(updated_sleep_df, marker_df, window = 30){
+find_markers <- function(updated_sleep_df, marker_df, window = 30) {
 
   marker_df <- marker_df %>% select(-dayno)
 

@@ -176,7 +176,6 @@ actiSleep <- function(
     invalid_4hr = ifelse(invalid_activity >= 60*max_invalid_time, 1, 0))
 
   # second because 15 minutes of invalid sw
-  sub_set_cols <- c("ID", "Interval.", "Start.Date.Time.f", "End.Date.Time.f", "Duration")
   stats <- stats_df %>% as.data.frame()
   stats <- filter_time(stats, time_start, time_stop, 'Start.Date.Time.f')
   stats_f <- add_dayno(stats, "Start.Date.Time.f", anchor_date) %>%
@@ -220,8 +219,9 @@ actiSleep <- function(
   ##############################################################################
   #  5) Extract rest data
   ##############################################################################
+  sub_set_cols <- c("ID", "Interval.", "Start.Date.Time.f", "End.Date.Time.f", "Duration")
   rest_data <- stats_f %>% filter(Interval.Type == "REST") %>%
-    dplyr::select(all_of(c(sub_set_cols, 'invalid_flag'))) %>% as.data.frame()
+    select(all_of(c(sub_set_cols, 'invalid_flag'))) %>% as.data.frame()
   initial_rest <- add_dayno(rest_data, "Start.Date.Time.f", anchor_date)
 
   if(nrow(rest_data) == 0) {
@@ -234,7 +234,7 @@ actiSleep <- function(
   ##############################################################################
   #  6) Merge nearby rest(s)
   ##############################################################################
-  # 6.a) Making day number index
+  # 6.a) Making day number
   rest <- add_dayno(rest_data, "Start.Date.Time.f", anchor_date) %>%
     relocate(ID, dayno) %>% arrange(Start.Date.Time.f)
 
@@ -308,15 +308,13 @@ actiSleep <- function(
   }
   sleep_w_diary_short <- sleep_w_diary_short %>% filter(!is.na(diary.Start) | !is.na(updated.Start))
 
-
   # no longer using full join that uses TYPE
   na <- as.POSIXct(NA, tz = 'UTC')
   updated_sleep_w_diary <- updated_sleep %>% select(-invalid_flag) %>%
     left_join(sleep_w_diary_short, by = c('ID', 'dayno', 'updated.Start', 'updated.End')) %>%
     arrange(dayno, updated.Start) %>%
     mutate(diary.Duration = as.numeric(abs(difftime(diary.Stop, diary.Start, units = 'mins'))))
-  updated_sleep_w_diary <- updated_sleep_w_diary %>%
-    left_join(invalid_info, by = 'dayno')
+  updated_sleep_w_diary <- updated_sleep_w_diary %>% left_join(invalid_info, by = 'dayno')
 
   #####################################
   ####### 8)  CLEAN MARKERS     #######

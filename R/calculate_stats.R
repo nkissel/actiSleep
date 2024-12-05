@@ -286,6 +286,8 @@ calculate_stats <- function(all_markers, epochs_f, ep_factor) {
           sleep_df$ACSL[i] <- as.numeric(difftime(sleep_df$start[i], rest_df$start[w], units = 'mins'))
           sleep_df$SNOOZE[i] <- as.numeric(difftime(rest_df$end[w], sleep_df$end[i], units = 'mins'))
 
+          sleep_df$Type[i] <- rest_df$Type[w]
+
           rest_df$ACSE[w] <- sleep_df$ACSLPTOT[i] / as.vector(rest_df$DURATION[w] - rest_df$ACINVSW[w]) * 100
           rest_df$ACSE_SLEEP[w] <- sleep_df$ACSLPTOT[i] / as.vector(sleep_df$DURATION[i] - sleep_df$ACINVSW[i]) * 100
           rest_df$ACSL[w] <- as.numeric(difftime(sleep_df$start[i], rest_df$start[w], units = 'mins'))

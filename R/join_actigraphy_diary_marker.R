@@ -7,7 +7,7 @@
 #' @param updated_sleep_df dataframe that is outputted from `update_sleep()`--
 #' this dataset should have already had engines/cabooses taken care of
 #' @param cleaned_marker_df dataframe that is outputted from from `find_markers`
-#' -- this dataset should already have been run through `make_dayno_jg`
+#' -- this dataset should already have been run through `add_dayno`
 #' @return a dataframe with columns: ID, dayno, Type (Main vs. Nap),
 #' actigraphy.Start, diary.Start, marker.Start, actigraphy.Stop, diary.Stop,
 #' marker.Stop

@@ -13,16 +13,9 @@ find_nearby_rest <- function(mydata, nmin = 30){
   mydata %>%
     arrange(Start.Date.Time.f) %>%
     mutate(ind = row_number(),
-           # end_lag = lag(End.Date.Time.f),
-           # start_lag = lag(Start.Date.Time.f),
-           start_lead = lead(Start.Date.Time.f),
-           # end_lead = lead(End.Date.Time.f),
-           # ind_lag = lag(ind),
-           ind_lead = lead(ind),
-           # diff_lag = difftime(Start.Date.Time.f, end_lag, units = "mins"),
-           diff_lead = difftime(start_lead, End.Date.Time.f, units = "mins")) %>%
+           diff_lead = difftime(lead(Start.Date.Time.f), End.Date.Time.f, units = "mins")) %>%
     group_by(dayno) %>%
-    mutate(interval_match = ifelse(diff_lead <= nmin, ind_lead,0),
+    mutate(interval_match = ifelse(diff_lead <= nmin, lead(ind), 0),
            interval_match = ifelse(is.na(interval_match), 0, interval_match))
 }
 
@@ -38,6 +31,7 @@ find_nearby_rest <- function(mydata, nmin = 30){
 #' @export
 find_nocturnal_awakening <- function(mydata){
 
+  # Find longest rest per day
   mdtemp <- mydata %>%
     mutate(start = to_dec(updated.Start),
            end = to_dec(updated.End, add=F),
@@ -48,6 +42,7 @@ find_nocturnal_awakening <- function(mydata){
            ind = row_number(),
            main_or_nap = ifelse(updated.Duration == max(updated.Duration,na.rm=T), "MAIN", "NAP"))
 
+  # find the median start, mid, and end times for longest rests
   avg <- mdtemp %>%
     filter(main_or_nap == 'MAIN') %>% ungroup() %>%
     summarize(avg_start = median(start,na.rm=T),
@@ -57,6 +52,7 @@ find_nocturnal_awakening <- function(mydata){
   mdtemp$avg_start <- avg$avg_start
   mdtemp$avg_end <- avg$avg_end
 
+  # Identify nocturnal awakenings that occur within the median start/end time
   ret <- mdtemp %>%  ungroup() %>%
     mutate(ind = row_number(),
            Start.Date.Time.f = updated.Start,
@@ -100,14 +96,15 @@ update_sleep <- function(mydata){
     ungroup() %>% filter(is_real_max | Type == 'NAP') %>% select(-is_real_max)
 }
 
+#' Update rest interval
+#'
+#' This function updates the start and end times of rest intervals as determined
+#' by `find_nearby_rest()`.
+#'
+#' @param mydata a data.frame of start/end rest that has a `dayno` column
+#' @return a data.frame with updated start and end times of rest intervals
 #' @export
 update_sleep2 <- function(mydata){
-
-  # mydata <- data.frame(ind = 1:6, interval_match = c(2,3,0,5,6,0), Start.Date.Time.f = c(5:7, 9:11),
-  #                      End.Date.Time.f = c(5.5, 6.5, 7.5, 9.5, 10.5, 11.5)) %>%
-  #   mutate(start_lead = lead(Start.Date.Time.f),
-  #         ind_lead = lead(ind))
-
   to_update1 <- mydata %>% filter(interval_match != 0) %>% pull(interval_match)
   to_update2 <- mydata %>% filter(interval_match != 0) %>% pull(ind)
   to_update <- sort(unique(c(to_update1,to_update2)))
@@ -136,6 +133,7 @@ update_sleep2 <- function(mydata){
       arrange(updated.Start) %>%
       mutate(Interval.f = 1:n()) %>%
       select(ID, dayno, Interval.f, updated.Start, updated.End, updated.Duration)
+
   } else {
     merged_data <- mydata %>% ungroup() %>%
       select(ID, dayno, updated.Start = Start.Date.Time.f,
@@ -145,7 +143,6 @@ update_sleep2 <- function(mydata){
       select(ID, dayno, Interval.f, updated.Start, updated.End, updated.Duration)
 
   }
-
 
   return(merged_data)
 }
