@@ -318,6 +318,12 @@ calculate_stats <- function(all_markers, epochs_f, ep_factor) {
     by = c('start' = 'algo.Start', 'end' = 'algo.Stop', 'INTERVAL')
   ) %>% arrange(start)
 
+  wr_m <- which(!is.na(df2$Type) & df2$INTERVAL == 'REST')
+  for(it0 in wr_m) {
+    sl <- which(df2$start >= df2$start[it0] & df2$end <= df2$end[it0] & df2$INTERVAL == 'SLEEP')
+    df2$Type[sl] <- df2$Type[it0]
+  }
+
   nms <- to_adjust[to_adjust %in% colnames(df2)]
   df2 <- df2 %>% select(c('start', 'end', 'dayno', 'INTERVAL', 'TYPE'='Type', nms)) %>% arrange(start)
   df2$algorithm <- 1
