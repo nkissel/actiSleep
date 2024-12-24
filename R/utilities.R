@@ -122,7 +122,13 @@ custom_bind_row1 <- function(x, y, s = F) {
       maxint <- suppressWarnings(max(as.numeric(x_new$Interval.), na.rm = T))
       y_new$Interval. <- ifelse(!is.na(as.numeric(y_new$Interval.)),
                                 as.character(as.numeric(y_new$Interval.) + maxint), y_new$Interval.)
-      return(dplyr::bind_rows(x_new, y_new))
+      if((nrow(x_new) != 0) & (nrow(y_new) != 0)) {
+        return(dplyr::bind_rows(x_new, y_new))
+      } else if(nrow(x_new) != 0) {
+        return(x_new)
+      } else {
+        return(y_new)
+      }
     } else {
       return(dplyr::bind_rows(x, y))
     }
