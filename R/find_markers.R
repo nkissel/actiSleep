@@ -1,4 +1,7 @@
 find_markers <- function(updated_sleep_df, marker_df, window = 30) {
+  safe_equal <- function(x, y) {
+    vapply(seq_along(x), function(i) identical(x[i], y[i]), logical(1))
+  }
 
   marker_df <- marker_df %>% select(-dayno)
 
@@ -40,9 +43,9 @@ find_markers <- function(updated_sleep_df, marker_df, window = 30) {
   res <- full_join(starts, ends) %>% ungroup() %>%
     mutate(dt_start = abs(difftime(marker.Start, updated.Start1, units = 'mins')),
            dt_stop = abs(difftime(marker.Stop, updated.End1, units = 'mins')),
-           marker.Start = if_else(mapply(identical, marker.Start, marker.Stop) & (dt_start > dt_stop),
+           marker.Start = if_else(safe_equal(marker.Start, marker.Stop) & (dt_start > dt_stop),
                                   NA, marker.Start),
-           marker.Stop = if_else(mapply(identical, marker.Start, marker.Stop) & (dt_start <= dt_stop),
+           marker.Stop = if_else(safe_equal(marker.Start, marker.Stop) & (dt_start <= dt_stop),
                                  NA, marker.Stop)) %>%
     select(ID, dayno, Interval.f, marker.Start, marker.Stop) %>%
     arrange(dayno, marker.Start)
@@ -51,6 +54,9 @@ find_markers <- function(updated_sleep_df, marker_df, window = 30) {
 }
 
 find_markers_acdl <- function(updated_sleep_df, marker_df, window = 30){
+  safe_equal <- function(x, y) {
+    vapply(seq_along(x), function(i) identical(x[i], y[i]), logical(1))
+  }
 
   marker_df <- marker_df %>% select(-dayno)
   updated_sleep_df<-updated_sleep_df %>% mutate(Interval.f=1:n())
@@ -93,9 +99,9 @@ find_markers_acdl <- function(updated_sleep_df, marker_df, window = 30){
   res <- full_join(starts, ends) %>% ungroup() %>%
     mutate(dt_start = abs(difftime(marker.Start, actigraphy.Start1, units = 'mins')),
            dt_stop = abs(difftime(marker.Stop, actigraphy.Stop1, units = 'mins')),
-           marker.Start = if_else(mapply(identical, marker.Start, marker.Stop) & (dt_start > dt_stop),
+           marker.Start = if_else(safe_equal(marker.Start, marker.Stop) & (dt_start > dt_stop),
                                   NA, marker.Start),
-           marker.Stop = if_else(mapply(identical, marker.Start, marker.Stop) & (dt_start <= dt_stop),
+           marker.Stop = if_else(safe_equal(marker.Start, marker.Stop) & (dt_start <= dt_stop),
                                  NA, marker.Stop)) %>%
     select(ID, dayno, Interval.f, marker.Start, marker.Stop) %>%
     arrange(dayno, marker.Start)
