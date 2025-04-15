@@ -18,7 +18,7 @@ find_markers <- function(updated_sleep_df, marker_df, window = 30) {
     group_by(ID, dayno, updated.Start1, diary.Start1) %>%
     # Grab the LATEST marker within this interval
     filter(Marker.Date.Time.f == max(Marker.Date.Time.f, na.rm=T)) %>% ungroup() %>%
-    select(ID, dayno, Marker.Date.Time.f, Interval.f) %>%
+    # select(ID, dayno, Marker.Date.Time.f, Interval.f) %>%
     rename(marker.Start = Marker.Date.Time.f)
 
 
@@ -33,12 +33,18 @@ find_markers <- function(updated_sleep_df, marker_df, window = 30) {
               abs(as.numeric(difftime(diary.Stop1, Marker.Date.Time.f, units="mins"))) <= window)) %>%
     group_by(ID, dayno, updated.End1, diary.Stop1) %>%
     # Grab the LATEST marker within this interval
-    filter(Marker.Date.Time.f == min(Marker.Date.Time.f, na.rm=T)) %>% ungroup() %>%
-    select(ID, dayno, Marker.Date.Time.f, Interval.f) %>%
+    filter(Marker.Date.Time.f == max(Marker.Date.Time.f, na.rm=T)) %>% ungroup() %>%
+    # select(ID, dayno, Marker.Date.Time.f, Interval.f) %>%
     rename(marker.Stop = Marker.Date.Time.f)
 
-  res <- full_join(starts, ends) %>%
-    select(ID, dayno, everything()) %>%
+  res <- full_join(starts, ends) %>% ungroup() %>%
+    mutate(dt_start = abs(difftime(marker.Start, updated.Start1, units = 'mins')),
+           dt_stop = abs(difftime(marker.Stop, updated.End1, units = 'mins')),
+           marker.Start = if_else(sapply(identical, marker.Start, marker.Stop) & (dt_start > dt_stop),
+                                  NA, marker.Start),
+           marker.Stop = if_else(sapply(identical, marker.Start, marker.Stop) & (dt_start <= dt_stop),
+                                 NA, marker.Stop)) %>%
+    select(ID, dayno, Interval.f, marker.Start, marker.Stop) %>%
     arrange(dayno, marker.Start)
 
   return(res)
@@ -63,11 +69,8 @@ find_markers_acdl <- function(updated_sleep_df, marker_df, window = 30){
     # Grab the LATEST marker within this interval
     filter(Marker.Date.Time.f == max(Marker.Date.Time.f, na.rm=T))  %>%
     ungroup() %>%
-    dplyr::select(ID, dayno, Marker.Date.Time.f, Interval.f) %>%
+    # dplyr::select(ID, dayno, Marker.Date.Time.f, Interval.f) %>%
     rename(marker.Start = Marker.Date.Time.f)
-
-
-
 
   ends <- full_join(updated_sleep_df, marker_df) %>%
     arrange(ID, dayno, actigraphy.Start) %>%
@@ -82,13 +85,19 @@ find_markers_acdl <- function(updated_sleep_df, marker_df, window = 30){
              abs(as.numeric(difftime(light.Stop1, Marker.Date.Time.f, units="mins"))) <= window) %>%
     group_by(ID, dayno, actigraphy.Stop1, diary.Stop1, light.Stop1) %>%
     # Grab the LATEST marker within this interval
-    filter(Marker.Date.Time.f == min(Marker.Date.Time.f, na.rm=T))  %>%
+    filter(Marker.Date.Time.f == max(Marker.Date.Time.f, na.rm=T))  %>%
     ungroup() %>%
-    dplyr::select(ID, dayno, Marker.Date.Time.f, Interval.f) %>%
+    # dplyr::select(ID, dayno, Marker.Date.Time.f, Interval.f) %>%
     rename(marker.Stop = Marker.Date.Time.f)
 
-  res <- full_join(starts, ends) %>%
-    dplyr::select(ID, dayno, everything()) %>%
+  res <- full_join(starts, ends) %>% ungroup() %>%
+    mutate(dt_start = abs(difftime(marker.Start, updated.Start1, units = 'mins')),
+           dt_stop = abs(difftime(marker.Stop, updated.End1, units = 'mins')),
+           marker.Start = if_else(sapply(identical, marker.Start, marker.Stop) & (dt_start > dt_stop),
+                                  NA, marker.Start),
+           marker.Stop = if_else(sapply(identical, marker.Start, marker.Stop) & (dt_start <= dt_stop),
+                                 NA, marker.Stop)) %>%
+    select(ID, dayno, Interval.f, marker.Start, marker.Stop) %>%
     arrange(dayno, marker.Start)
 
   return(res)

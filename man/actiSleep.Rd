@@ -12,7 +12,9 @@ actiSleep(
   time_start = NULL,
   time_stop = NULL,
   max_invalid_time = 4,
-  add_na_tails = F
+  add_na_tails = F,
+  light_window = 120,
+  push_window = 60
 )
 }
 \arguments{

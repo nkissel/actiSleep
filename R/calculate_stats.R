@@ -198,18 +198,30 @@ calculate_stats <- function(all_markers, epochs_f, ep_factor) {
         row_id = x
       )
     }
+    safe_rename <- function(old, new) {
+      function(x) {
+        if (length(x) == 0) return(character())
+        ifelse(x == old, new, x)
+      }
+    }
+
     start_end_df_s <- bind_rows(
       lapply(seq_len(nrow(start_end_df %>% filter(INTERVAL == 'SLEEP'))),
              make_longer, start_end_df %>% filter(INTERVAL == 'SLEEP'))) %>%
-      rename(sleep_group = row_id)
+      rename_with(safe_rename("row_id", "sleep_group"), everything())
     start_end_df_r <- bind_rows(
       lapply(seq_len(nrow(start_end_df %>% filter(INTERVAL == 'REST'))),
              make_longer, start_end_df %>% filter(INTERVAL == 'REST'))) %>%
-      rename(rest_group = row_id)
+      rename_with(safe_rename("row_id", "rest_group"), everything())
     start_end_df_a <- bind_rows(
       lapply(seq_len(nrow(start_end_df %>% filter(INTERVAL == 'ACTIVE'))),
              make_longer, start_end_df %>% filter(INTERVAL == 'ACTIVE'))) %>%
-      rename(ac_group = row_id)
+      rename_with(safe_rename("row_id", "ac_group"), everything())
+
+    if(nrow(start_end_df_r) == 0) {
+      start_end_df_r <- data.frame(time = as.POSIXct(NA, tz = 'UTC'), rest_group = NA)[-1,]
+      start_end_df_s <- data.frame(time = as.POSIXct(NA, tz = 'UTC'), sleep_group = NA)[-1,]
+    }
 
     group_df <- start_end_df_a %>% full_join(start_end_df_r, by = 'time') %>% full_join(start_end_df_s) %>%
       rename(Epoch.Date.Time.f = time)

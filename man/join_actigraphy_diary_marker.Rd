@@ -11,7 +11,7 @@ join_actigraphy_diary_marker(updated_sleep_df, cleaned_marker_df)
 this dataset should have already had engines/cabooses taken care of}
 
 \item{cleaned_marker_df}{dataframe that is outputted from from \code{find_markers}
--- this dataset should already have been run through \code{make_dayno_jg}}
+-- this dataset should already have been run through \code{add_dayno}}
 }
 \value{
 a dataframe with columns: ID, dayno, Type (Main vs. Nap),
