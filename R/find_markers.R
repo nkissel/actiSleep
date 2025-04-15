@@ -91,8 +91,8 @@ find_markers_acdl <- function(updated_sleep_df, marker_df, window = 30){
     rename(marker.Stop = Marker.Date.Time.f)
 
   res <- full_join(starts, ends) %>% ungroup() %>%
-    mutate(dt_start = abs(difftime(marker.Start, updated.Start1, units = 'mins')),
-           dt_stop = abs(difftime(marker.Stop, updated.End1, units = 'mins')),
+    mutate(dt_start = abs(difftime(marker.Start, actigraphy.Start1, units = 'mins')),
+           dt_stop = abs(difftime(marker.Stop, actigraphy.Stop1, units = 'mins')),
            marker.Start = if_else(mapply(identical, marker.Start, marker.Stop) & (dt_start > dt_stop),
                                   NA, marker.Start),
            marker.Stop = if_else(mapply(identical, marker.Start, marker.Stop) & (dt_start <= dt_stop),
