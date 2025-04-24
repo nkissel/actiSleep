@@ -333,6 +333,7 @@ calculate_stats <- function(all_markers, epochs_f, ep_factor) {
   wr_m <- which(!is.na(df2$Type) & df2$INTERVAL == 'REST')
   for(it0 in wr_m) {
     sl <- which(df2$start >= df2$start[it0] & df2$end <= df2$end[it0] & df2$INTERVAL == 'SLEEP')
+    df2$dayno[sl] <- df2$dayno[it0]
     df2$Type[sl] <- df2$Type[it0]
   }
 
