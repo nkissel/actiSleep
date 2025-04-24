@@ -411,7 +411,8 @@ actiSleep <- function(
   all_markers$algo.Start <- all_markers2$algo.Start
   all_markers$algo.Stop <- all_markers2$algo.Stop; rm(all_markers2)
   all_markers <- add_dayno(all_markers, 'algo.Start', anchor_date) # must do this in case onset crosses noon after selection!
-  all_markers <- find_main(all_markers, 'algo.Start', 'algo.Stop') # redo MAIN/NAP
+  all_markers <- find_main(all_markers, 'algo.Start', 'algo.Stop') %>%
+    ungroup() %>% as.data.frame()# redo MAIN/NAP
 
   # calculate stats
   auto_stats <- calculate_stats(all_markers, epochs_f,  ep_factor)
