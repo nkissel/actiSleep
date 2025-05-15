@@ -326,7 +326,7 @@ calculate_stats <- function(all_markers, epochs_f, ep_factor) {
 
   df2 <- df %>% mutate(Activity = ifelse(is.na(Activity), 0, Activity)) %>% get_all_stats()
   df2 <- df2 %>% left_join(
-    all_markers %>% select(Type, algo.Start, algo.Stop) %>% mutate(INTERVAL = 'REST'),
+    all_markers %>% ungroup() %>% select(Type, algo.Start, algo.Stop) %>% mutate(INTERVAL = 'REST'),
     by = c('start' = 'algo.Start', 'end' = 'algo.Stop', 'INTERVAL')
   ) %>% arrange(start)
 
