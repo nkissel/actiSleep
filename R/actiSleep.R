@@ -18,8 +18,18 @@
 #' @import lubridate
 #' @export
 actiSleep <- function(
-    epoch_df, diary_df, stats_df, marker_df, time_start = NULL, time_stop = NULL,
-    max_invalid_time = 4, add_na_tails = F, light_window = 120, push_window = 60) {
+    epoch_df, diary_df, stats_df, marker_df, time_start = NULL,
+    time_stop = NULL, max_invalid_time = 4, add_na_tails = F,
+    light_window = 120, push_window = 60) {
+
+  stopifnot(
+    "epoch_df must be a data.frame" = is.data.frame(epoch_df),
+    "diary_df must be a data.frame" = is.data.frame(diary_df),
+    "stats_df must be a data.frame" = is.data.frame(stats_df),
+    "marker_df must be a data.frame" = is.data.frame(marker_df),
+    "time_start must be POSIXct or NULL" = is.data.frame(time_start),
+    "time_stop must be POSIXct or NULL" = is.data.frame(time_stop)
+  )
 
   filter_time <- function(df, time_start, time_stop, var_name) {
     if(!is.null(time_start)) {
@@ -494,6 +504,10 @@ actiSleep <- function(
       across(5:12, function(x) ifelse(is.na(x), 0, x)), ID = id) %>%
     relocate(ID, dayno, Type, algo.Start, algo.Stop, flag) %>%
     arrange(ID, dayno)
+  flags <- flags %>% mutate(
+    flag = if_else(algo.Stop > time_stop, 1, flag),
+    xnoon = if_else(algo.Stop > time_stop, 1, 0)
+  ) %>% relocate(xnoon, .before = invalid_flag)
   # write.csv(flags, paste0(summary_save_dir, '/stats_', id, '.csv'))
 
   # EDIT EPOCHS_F INTERVAL STATUSES
