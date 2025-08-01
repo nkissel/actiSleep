@@ -1,6 +1,6 @@
 # actiSleep
 
-An actigraphy analysis pipeline. This package is intended to process epoch-level actigraphy data by editing rest start and end time, as well as flagging uncertain or aberrant records. 
+An actigraphy analysis package. 
 
 ## actiSleep overview
 
