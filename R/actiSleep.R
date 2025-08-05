@@ -502,10 +502,14 @@ actiSleep <- function(
       across(5:12, function(x) ifelse(is.na(x), 0, x)), ID = id) %>%
     relocate(ID, dayno, Type, algo.Start, algo.Stop, flag) %>%
     arrange(ID, dayno)
-  flags <- flags %>% mutate(
-    flag = if_else(algo.Stop > time_stop, 1, flag),
-    xnoon = if_else(algo.Stop > time_stop, 1, 0)
-  ) %>% relocate(xnoon, .before = invalid_flag)
+
+  if(!is.null(time_stop)) { # this new flag only relevant if there is time_stop
+    flags <- flags %>% mutate(
+      flag = if_else(algo.Stop > time_stop, 1, flag),
+      xnoon = if_else(algo.Stop > time_stop, 1, 0)
+    ) %>% relocate(xnoon, .before = invalid_flag)
+  }
+
   # write.csv(flags, paste0(summary_save_dir, '/stats_', id, '.csv'))
 
   # EDIT EPOCHS_F INTERVAL STATUSES
