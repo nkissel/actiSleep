@@ -26,9 +26,7 @@ actiSleep <- function(
     "epoch_df must be a data.frame" = is.data.frame(epoch_df),
     "diary_df must be a data.frame" = is.data.frame(diary_df),
     "stats_df must be a data.frame" = is.data.frame(stats_df),
-    "marker_df must be a data.frame" = is.data.frame(marker_df),
-    "time_start must be POSIXct or NULL" = is.data.frame(time_start),
-    "time_stop must be POSIXct or NULL" = is.data.frame(time_stop)
+    "marker_df must be a data.frame" = is.data.frame(marker_df)
   )
 
   filter_time <- function(df, time_start, time_stop, var_name) {
